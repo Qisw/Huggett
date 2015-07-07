@@ -145,15 +145,15 @@ class cohort:
         T = self.T
         aN, zN = self.aN, self.zN
         aa = self.aa
+        # self.v = self.v*0
+        # self.ev = self.ev*0
         # y = -1 : the oldest generation
         for j in range(zN):
             for i in range(aN):
                 self.c[-1,j,i] = max(self.neg, self.aa[i]*(1+(1-tau[-1])*r[-1])
                                  + w[-1]*ef[-1,j]*(1-theta[-1]-tau[-1]) + b[-1] + Bq[-1])
                 self.v[-1,j,i] = self.util(self.c[-1,j,i])
-        for j in range(zN):
-            for ni in range(aN):
-                ev[-1,j,ni] = sum([self.v[-1,nj,ni]*self.pi[j,nj] for nj in range(self.zN)])
+        self.ev[-1] = self.pi.dot(self.v[-1])
                 #self.vtilde[-1] = interp1d(self.aa, self.v[-1], kind='cubic')
         # y = -2, -3,..., -60
         for y in range(-2, -(T+1), -1):
@@ -163,12 +163,10 @@ class cohort:
                     for ni in range(aN):
                         c = aa[i]*(1+(1-tau[y])*r[y]) + w[y]*ef[y,j]*(1-theta[y]-tau[y]) \
                             + b[y] + Bq[y] - aa[ni]
-                        v[i] = self.util(c) + self.beta*self.sp[y+1]*ev[y+1,j,ni]
+                        v[i] = self.util(c) + self.beta*self.sp[y+1]*self.ev[y+1,j,ni]
                     self.a[y,j,i] = argmax(v)
                     self.v[y,j,i] = v[self.a[y,j,i]]
-            for j in range(zN):
-                for ni in range(aN):    # l = 0, 1, ..., 50
-                    ev[y,j,ni] = sum([self.v[y,nj,ni]*self.pi[j,nj] for nj in range(self.zN)])
+            self.ev[y] = self.pi.dot(self.v[y])
 
 
     def calculate_mu(self):
@@ -407,7 +405,7 @@ if __name__ == '__main__':
     """Find Old and New Steady States with population growth rates ng and ng1"""
     k = state(r_init=0.11,T=1)
     c = cohort()
-    N = 20
+    N = 1
     #rgrid = linspace(0.0,0.2,6)
 
     for n in range(N):

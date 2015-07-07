@@ -143,6 +143,7 @@ class cohort:
         ef = self.ef
         T = self.T
         aN, zN = self.aN, self.zN
+        self.v = self.v*0
         # y = -1 : the oldest generation
         for j in range(self.zN):
             for i in range(self.aN):
@@ -411,7 +412,7 @@ if __name__ == '__main__':
     """Find Old and New Steady States with population growth rates ng and ng1"""
     k = state(r_init=0.11,T=1)
     c = cohort()
-    N = 20
+    N = 2
     #rgrid = linspace(0.0,0.2,6)
 
     for n in range(N):
