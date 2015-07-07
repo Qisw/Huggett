@@ -7,7 +7,7 @@ Economics, 38(3), 469-494.
 
 from scipy.interpolate import interp1d
 from scipy.optimize import fsolve, minimize_scalar
-from numpy import linspace, mean, array, zeros, absolute, loadtxt, dot, prod, genfromtxt, sum
+from numpy import linspace, mean, array, zeros, absolute, loadtxt, dot, prod, genfromtxt, sum, argmax
 from matplotlib import pyplot as plt
 from datetime import datetime
 import time
@@ -128,6 +128,7 @@ class cohort:
         self.zN = zN = self.pi.shape[0]
         """ value function and its interpolation """
         self.v = array([[[0 for a in range(aN)] for z in range(zN)] for y in range(T)], dtype=float)
+        self.ev = array([[[0 for a in range(aN)] for z in range(zN)] for y in range(T)], dtype=float)
         #self.vtilde = [[] for y in range(T)]
         """ policy functions used in value function method """
         self.a = array([[[0 for a in range(aN)] for z in range(zN)] for y in range(T)], dtype=float)
@@ -143,36 +144,31 @@ class cohort:
         ef = self.ef
         T = self.T
         aN, zN = self.aN, self.zN
+        aa = self.aa
         # y = -1 : the oldest generation
-        for j in range(self.zN):
-            for i in range(self.aN):
+        for j in range(zN):
+            for i in range(aN):
                 self.c[-1,j,i] = max(self.neg, self.aa[i]*(1+(1-tau[-1])*r[-1])
                                  + w[-1]*ef[-1,j]*(1-theta[-1]-tau[-1]) + b[-1] + Bq[-1])
                 self.v[-1,j,i] = self.util(self.c[-1,j,i])
+        for j in range(zN):
+            for ni in range(aN):
+                ev[-1,j,ni] = sum([self.v[-1,nj,ni]*self.pi[j,nj] for nj in range(self.zN)])
                 #self.vtilde[-1] = interp1d(self.aa, self.v[-1], kind='cubic')
         # y = -2, -3,..., -60
         for y in range(-2, -(T+1), -1):
             for j in range(zN):
-                # print self.apath
-                m0 = 0
-                for i in range(self.aN):    # l = 0, 1, ..., 50
-                    # Find a bracket within which optimal a' lies
-                    m = max(0, m0)  # Rch91v.g uses m = max(0, m0-1)
-                    m0, a0, b0, c0 = self.GetBracket(y, j, i, m, rwbq)
-                    # Find optimal a' using Golden Section Search
-                    if a0 == b0:
-                        self.a[y,j,i] = 0
-                    elif b0 == c0:
-                        self.a[y,j,i] = self.aN - 1
-                    else:
-                        self.a[y,j,i] = m0
-                    # Find c and v given current and next period asset aa[i], aa[ni]
-                    self.c[y,j,i] = self.aa[i]*(1+(1-tau[y])*r[y]) \
-                                    + w[y]*ef[y,j]*(1-theta[y]-tau[y]) + b[y] + Bq[y] \
-                                    - self.aa[self.a[y,j,i]]
-                    ev = sum([self.v[y+1,nj,self.a[y,j,i]]*self.pi[j,nj]
-                                                    for nj in range(self.zN)])
-                    self.v[y,j,i] = self.util(self.c[y,j,i]) + self.beta*self.sp[y+1]*ev
+                for i in range(aN):    # l = 0, 1, ..., 50
+                    v = array([0 for i in range(aN)], dtype=float)
+                    for ni in range(aN):
+                        c = aa[i]*(1+(1-tau[y])*r[y]) + w[y]*ef[y,j]*(1-theta[y]-tau[y]) \
+                            + b[y] + Bq[y] - aa[ni]
+                        v[i] = self.util(c) + self.beta*self.sp[y+1]*ev[y+1,j,ni]
+                    self.a[y,j,i] = argmax(v)
+                    self.v[y,j,i] = v[self.a[y,j,i]]
+            for j in range(zN):
+                for ni in range(aN):    # l = 0, 1, ..., 50
+                    ev[y,j,ni] = sum([self.v[y,nj,ni]*self.pi[j,nj] for nj in range(self.zN)])
 
 
     def calculate_mu(self):
