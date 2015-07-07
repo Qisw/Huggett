@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-Jul. 6, 2015, Hyun Chang Yi
+Jul. 7, 2015, Hyun Chang Yi
 Huggett (1996) "Wealth distribution in life-cycle economies," Journal of Monetary
 Economics, 38(3), 469-494.
 """
 
 from scipy.interpolate import interp1d
 from scipy.optimize import fsolve, minimize_scalar
-from numpy import linspace, mean, array, zeros, absolute, loadtxt, dot, prod, genfromtxt
+from numpy import linspace, mean, array, zeros, absolute, loadtxt, dot, prod, genfromtxt, sum
 from matplotlib import pyplot as plt
 from datetime import datetime
 import time
@@ -20,21 +20,23 @@ class state:
     """ This class is just a "struct" to hold  the collection of primitives defining
     an economy in which one or multiple generations live """
     def __init__(self, alpha=0.36, delta=0.06, tau=0.2378, theta=0.1, zeta=0.3,
-        phi=0.8, tol=0.01, r=0.03,
+        phi=0.9, tol=0.01, r_init=0.03, Bq_init=0,
         T=1, ng = 1.012, dng = 0.0):
         # tr = 0.429, tw = 0.248, zeta=0.5, gy = 0.195, in Section 9.3. in Heer/Maussner
         """tr, tw and tb are tax rates on capital return, wage and tax for pension.
         tb is determined by replacement ratio, zeta, and other endogenous variables.
         gy is ratio of government spending over output.
         Transfer from government to households, Tr, is determined endogenously"""
-        self.alpha, self.zeta, self.delta = alpha, zeta, delta
+        self.alpha, self.zeta, self.delta, self.tau = alpha, zeta, delta, tau
+        self.theta = theta
+        self.T = T
         self.phi, self.tol = phi, tol
         ng0, ng1 = ng, ng + dng
-        self.sp = sp = loadtxt('s.txt', delimiter='\n')  # survival probability
+        self.sp = sp = loadtxt('sp.txt', delimiter='\n')  # survival probability
         self.pi = genfromtxt('pi.csv', delimiter=',')  # productivity transition probability
-        # muyz[y] : distribution of productivity of y-yrs agents
-        self.muyz = genfromtxt('muyz.csv', delimiter=',')
-        self.ef = genfromtxt('ef.csv',delimiter=',')  # efficiency of i-productivity and j-age
+        # muz[y] : distribution of productivity of y-yrs agents
+        self.muz = muz = genfromtxt('muz.csv', delimiter=',')
+        self.ef = ef = genfromtxt('ef.csv',delimiter=',')  # efficiency of i-productivity and j-age
         self.ly = ly = ef.shape[0]
         m0 = array([prod(sp[:y+1])/ng0**y for y in range(ly)], dtype=float)
         m1 = array([prod(sp[:y+1])/ng1**y for y in range(ly)], dtype=float)
@@ -42,82 +44,71 @@ class state:
         for t in range(min(T,ly-1)):
             self.pop[t,t+1:] = m0[t+1:]*ng0**t
         """Construct containers for market prices, tax rates, transfers, other aggregate variables"""
-        self.Ls = array([sum([muyz[y].dot(ef[y])*self.pop[t,y]]) for t in range(T)], dtype=float)
-        self.Kd = array([((r+delta)/alpha)**(1.0/(alpha-1.0))*Ls[t] for t in range(T)], dtype=float)
-        self.w = array([((r+delta)/alpha)**(alpha/(alpha-1.0))*(alpha-1.0) for t in range(T)], dtype=float)
-
-        self.Pt = Pt = array([sum(self.pop[t]) for t in range(TS)], dtype=float)
-        self.Pr = Pr = array([sum([self.pop[t,y] for y in range(W,T)]) for t in range(TS)], dtype=float)
-        self.tr = array([tr for t in range(TS)], dtype=float)
-        self.tw = array([tw for t in range(TS)], dtype=float)
-        self.gy = array([gy for t in range(TS)], dtype=float)
-        self.k = array([k for t in range(TS)], dtype=float)
-
-        self.K = K = array([k*L[t] for t in range(TS)], dtype=float)
-        self.C = C = array([0 for t in range(TS)], dtype=float)
-        self.Beq = Beq = array([K[t]/Pt[t]*sum((1-self.sp[t])*self.pop[t]) for t in range(TS)], dtype=float)
-        self.y = y = array([k**alpha for t in range(TS)], dtype=float)
-        self.r = r = array([(alpha)*k**(alpha-1) - delta for t in range(TS)], dtype=float)
-        self.w = w = array([(1-alpha)*k**alpha for t in range(TS)], dtype=float)
-        self.tb = tb = array([zeta*(1-tw)*Pr[t]/(L[t]+zeta*Pr[t]) for t in range(TS)], dtype=float)
-        self.b = array([zeta*(1-tw-tb[t])*w[t] for t in range(TS)], dtype=float)
-        self.Tax = Tax = array([tw*w[t]*L[t]+tr*r[t]*K[t] for t in range(TS)], dtype=float)
-        self.G = G = array([gy*y[t]*L[t] for t in range(TS)], dtype=float)
-        self.Tr = array([(Tax[t]+Beq[t]-G[t])/Pt[t] for t in range(TS)], dtype=float)
-        # container for r, w, b, tr, tw, tb, Tr
-        self.p = array([self.r, self.w, self.b, self.tr, self.tw, self.tb, self.Tr])
-        # whether the capital stock has converged
-        self.Converged = False
+        self.theta = array([theta for t in range(T)], dtype=float)
+        self.tau = array([tau for t in range(T)], dtype=float)
+        self.r0 = r0 =array([r_init for t in range(T)], dtype=float)
+        self.r1 = r1 =array([r_init for t in range(T)], dtype=float)
+        self.pr = array([sum(self.pop[t,45:]) for t in range(T)], dtype=float)
+        self.L = array([sum([muz[y].dot(ef[y])*self.pop[t,y] for y in range(ly)]) for t in range(T)], dtype=float)
+        self.K0 = array([((r0[t]+delta)/alpha)**(1.0/(alpha-1.0))*self.L[t] for t in range(T)], dtype=float)
+        self.K1 = array([0 for t in range(T)], dtype=float)
+        self.w = array([((r0[t]+delta)/alpha)**(alpha/(alpha-1.0))*(1.0-alpha) for t in range(T)], dtype=float)
+        self.b = array([self.theta[t]*self.w[t]*self.L[t]/self.pr[t] for t in range(T)], dtype=float)
+        self.Bq0 = array([Bq_init for t in range(T)], dtype=float)
+        self.Bq1 = array([0 for t in range(T)], dtype=float)
+        self.rdiff = 10
+        self.Bqdiff = 10
+        self.Kdiff = 10
+        # container for r, w, b, Bq, theta, tau
+        self.rwbq = array([self.r0, self.w, self.b, self.Bq0, self.theta, self.tau])
 
 
-    def aggregate(self, gs):
+    def aggregate(self, cohorts):
         """Aggregate Capital, Labor in Efficiency unit and Bequest over all cohorts"""
-        W, T, TS = self.W, self.T, self.TS
+        T, ly, alpha, delta = self.T, self.ly, self.alpha, self.delta
+        aa = cohorts[-1].aa
+        pop, sp = self.pop, self.sp
         """Aggregate all cohorts' capital and labor supply at each year"""
-        K1, L1 = array([[0 for t in range(TS)] for i in range(2)], dtype=float)
-        for t in range(TS):
-            if t <= TS-T-1:
-                K1[t] = sum([gs[t+y].apath[-(y+1)]*self.pop[t,-(y+1)] for y in range(T)])
-                L1[t] = sum([gs[t+y].epath[-(y+1)]*self.pop[t,-(y+1)] for y in range(T)])
-                self.Beq[t] = sum([gs[t+y].apath[-(y+1)]*self.pop[t,-(y+1)]
-                                    /self.sp[t,-(y+1)]*(1-self.sp[t,-(y+1)]) for y in range(T)])
-                self.C[t] = sum([gs[t+y].cpath[-(y+1)]*self.pop[t,-(y+1)] for y in range(T)])
-            else:
-                K1[t] = sum([gs[-1].apath[-(y+1)]*self.pop[t][-(y+1)] for y in range(T)])
-                L1[t] = sum([gs[-1].epath[-(y+1)]*self.pop[t][-(y+1)] for y in range(T)])
-                self.Beq[t] = sum([gs[-1].apath[-(y+1)]*self.pop[t,-(y+1)]
-                                    /self.sp[t,-(y+1)]*(1-self.sp[t,-(y+1)]) for y in range(T)])
-                self.C[t] = sum([gs[-1].cpath[-(y+1)]*self.pop[t][-(y+1)] for y in range(T)])
-        self.Converged = (max(absolute(K1-self.K)) < self.tol*max(absolute(self.K)))
+        for t in range(T):
+            tt = t+y if t <= T-ly-1 else -1
+            self.K1[t] = sum([sum(cohorts[tt].mu[y,:,:],0).dot(aa)*pop[t,y] for y in range(ly)])
+            self.Bq1[t] = (1-self.zeta)*sum([sum(cohorts[tt].mu[y,:,:],0).dot(aa)*pop[t,y]\
+                                                      /sp[y]*(1-sp[y]) for y in range(ly)])
+            self.r1[t] = max(0.001,alpha*(self.K1[t]/self.L[t])**(alpha-1.0)-delta)
+        self.rdiff = max(absolute(self.r0 - self.r1))
+        self.Kdiff = max(absolute(self.K0 - self.K1))
+        self.Bqdiff = max(absolute(self.Bq0 - self.Bq1))
         """ Update the economy's aggregate K and N with weight phi on the old """
-        self.K = self.phi*self.K + (1-self.phi)*K1
-        self.L = self.phi*self.L + (1-self.phi)*L1
-        self.k = self.K/self.L
         # print "K=%2.2f," %(self.K[0]),"L=%2.2f," %(self.L[0]),"K/L=%2.2f" %(self.k[0])
-        for i in range(self.TS/self.T):
-            print "K=%2.2f," %(self.K[i*self.T]),"L=%2.2f," %(self.L[i*self.T]),"K/L=%2.2f" %(self.k[i*self.T])
 
 
     def update(self):
         """ Update market prices, w and r, and many others according to new
-        aggregate capital and labor paths for years 0,...,TS from last iteration """
-        for t in range(self.TS):
-            self.Pt[t] = sum(self.pop[t])
-            self.Pr[t] = sum([self.pop[t,y] for y in range(self.W,self.T)])
-            self.y[t] = self.k[t]**self.alpha
-            self.r[t] = max(0.01,self.alpha*self.k[t]**(self.alpha-1)-self.delta)
-            self.w[t] = (1-self.alpha)*self.k[t]**self.alpha
-            self.Tax[t] = self.tw[t]*self.w[t]*self.L[t] + self.tr[t]*self.r[t]*self.k[t]*self.L[t]
-            self.G[t] = self.gy[t]*self.y[t]*self.L[t]
-            self.Tr[t] = (self.Tax[t] + self.Beq[t] - self.G[t])/self.Pt[t]
-            self.tb[t] = self.zeta*(1-self.tw[t])*self.Pr[t]/(self.L[t]+self.zeta*self.Pr[t])
-            self.b[t] = self.zeta*(1-self.tw[t]-self.tb[t])*self.w[t]
+        aggregate capital and labor paths for years 0,...,T from last iteration """
+        alpha, delta = self.alpha, self.delta
+        for t in range(self.T):
+            self.r0[t] = self.phi*self.r0[t] + (1-self.phi)*self.r1[t]
+            self.K0[t] = ((self.r0[t]+delta)/alpha)**(1.0/(alpha-1.0))*self.L[t]
+            self.w[t] = ((self.r0[t]+delta)/alpha)**(alpha/(alpha-1.0))*(alpha-1.0)
+            self.b[t] = self.theta[t]*self.w[t]*self.L[t]/self.pr[t]
+            self.Bq0[t] = self.Bq1[t]
+        # container for r, w, b, Bq, theta, tau
+        self.rwbq = array([self.r0, self.w, self.b, self.Bq0, self.theta, self.tau])
         # print "for r=%2.2f," %(self.r[0]*100), "w=%2.2f," %(self.w[0]), \
         #         "Tr=%2.2f," %(self.Tr[0]), "b=%2.2f," %(self.b[0]), "Beq.=%2.2f," %(self.Beq[0])
-        for i in range(self.TS/self.T):
-            print "r=%2.2f," %(self.r[i*self.T]*100),"w=%2.2f," %(self.w[i*self.T]),\
-                    "Tr=%2.2f" %(self.Tr[i*self.T]), "b=%2.2f," %(self.b[i*self.T])
-        self.p = array([self.r, self.w, self.b, self.tr, self.tw, self.tb, self.Tr])
+
+
+    def update_Bq(self):
+        """ Update market prices, w and r, and many others according to new
+        aggregate capital and labor paths for years 0,...,T from last iteration """
+        alpha, delta = self.alpha, self.delta
+        for t in range(self.T):
+            self.Bq0[t] = self.Bq1[t]
+        # container for r, w, b, Bq, theta, tau
+        self.rwbq = array([self.r0, self.w, self.b, self.Bq0, self.theta, self.tau])
+        # print "for r=%2.2f," %(self.r[0]*100), "w=%2.2f," %(self.w[0]), \
+        #         "Tr=%2.2f," %(self.Tr[0]), "b=%2.2f," %(self.b[0]), "Beq.=%2.2f," %(self.Beq[0])
+
 
 
 class cohort:
@@ -130,11 +121,11 @@ class cohort:
         self.T = T = (y+1 if (y >= 0) and (y <= W+R-2) else W+R)
         self.aH, self.aL, self.aN, self.aa = aH, aL, aN, aL+aH*linspace(0,1,aN)
         self.tol, self.neg = tol, neg
-        self.s = loadtxt('s.txt', delimiter='\n')  # survival probability
-        self.mu0 = loadtxt('mu0.txt', delimiter='\n')  # initial distribution of productivity
+        self.sp = loadtxt('sp.txt', delimiter='\n')  # survival probability
+        self.muz = genfromtxt('muz.csv', delimiter=',')  # initial distribution of productivity
         self.pi = genfromtxt('pi.csv', delimiter=',')  # productivity transition probability
-        self.ef = loadtxt('ef.txt', delimiter='\n')
-        self.zN = self.pi.shape[0]
+        self.ef = genfromtxt('ef.csv', delimiter=',')
+        self.zN = zN = self.pi.shape[0]
         """ value function and its interpolation """
         self.v = array([[[0 for a in range(aN)] for z in range(zN)] for y in range(T)], dtype=float)
         #self.vtilde = [[] for y in range(T)]
@@ -145,17 +136,18 @@ class cohort:
         self.mu = array([[[0 for a in range(aN)] for z in range(zN)] for y in range(T)], dtype=float)
 
 
-    def yza2a(self, p):
+    def optimalpolicy(self, rwbq):
         """ Given prices, transfers, benefits and tax rates over one's life-cycle,
         value and decision functions are calculated ***BACKWARD*** """
-        [r, w, b, Bq, theta, tau] = p
+        [r, w, b, Bq, theta, tau] = rwbq
         ef = self.ef
         T = self.T
+        aN, zN = self.aN, self.zN
         # y = -1 : the oldest generation
         for j in range(self.zN):
-            for i in range(self.aN)
-                self.c[-1,j,i] = max(self.neg, self.aa[i]*(1+(1-tau)*r[-1])
-                                 + w[-1]*ef[-1,j]*(1-theta-tau) + b[-1] + Bq[-1])
+            for i in range(self.aN):
+                self.c[-1,j,i] = max(self.neg, self.aa[i]*(1+(1-tau[-1])*r[-1])
+                                 + w[-1]*ef[-1,j]*(1-theta[-1]-tau[-1]) + b[-1] + Bq[-1])
                 self.v[-1,j,i] = self.util(self.c[-1,j,i])
                 #self.vtilde[-1] = interp1d(self.aa, self.v[-1], kind='cubic')
         # y = -2, -3,..., -60
@@ -166,27 +158,28 @@ class cohort:
                 for i in range(self.aN):    # l = 0, 1, ..., 50
                     # Find a bracket within which optimal a' lies
                     m = max(0, m0)  # Rch91v.g uses m = max(0, m0-1)
-                    m0, a0, b0, c0 = self.GetBracket(y, j, i, m, p)
+                    m0, a0, b0, c0 = self.GetBracket(y, j, i, m, rwbq)
                     # Find optimal a' using Golden Section Search
                     if a0 == b0:
                         self.a[y,j,i] = 0
                     elif b0 == c0:
-                        self.a[y,j,i] = self.aN
+                        self.a[y,j,i] = self.aN - 1
                     else:
                         self.a[y,j,i] = m0
                     # Find c and v given current and next period asset aa[i], aa[ni]
-                    self.c[y,j,i] = self.aa[i]*(1+(1-tau)*r[y]) \
-                                    + w[y]*ef[y,j]*(1-theta-tau) + b[y] + Bq[y] \
+                    self.c[y,j,i] = self.aa[i]*(1+(1-tau[y])*r[y]) \
+                                    + w[y]*ef[y,j]*(1-theta[y]-tau[y]) + b[y] + Bq[y] \
                                     - self.aa[self.a[y,j,i]]
-                    nv = sum([self.v[y+1,nj,self.a[y,j,i]]*self.pi[j,nj]
+                    ev = sum([self.v[y+1,nj,self.a[y,j,i]]*self.pi[j,nj]
                                                     for nj in range(self.zN)])
-                    self.v[y,j,i] = self.util(self.c[y,j,i]) + self.beta*self.s[y+1]*nv
+                    self.v[y,j,i] = self.util(self.c[y,j,i]) + self.beta*self.sp[y+1]*ev
 
 
-    def mu(self):
+    def calculate_mu(self):
         """ find distribution of agents w.r.t. age, productivity and asset """
         a, pi = self.a, self.pi
-        self.mu[0,:,0] = self.mu0
+        self.mu = self.mu*0
+        self.mu[0,:,0] = self.muz[0]
         for y in range(1,self.T):
             for j in range(self.zN):
                 for i in range(self.aN):
@@ -194,7 +187,7 @@ class cohort:
                                                 + self.mu[y-1,j,i]*pi[j]
 
 
-    def GetBracket(self, y, j, i, m, p):
+    def GetBracket(self, y, j, i, m, rwbq):
         """ Find a bracket (a,b,c) such that policy function for next period asset level,
         a[x;asset[l],y] lies in the interval (a,b) """
         aa = self.aa
@@ -205,7 +198,7 @@ class cohort:
         """ The slow part of if slope != float("inf") is no doubt converting
         the string to a float. """
         while (a > b) or (b > c):
-            v1 = self.yzaa2v(y, j, i, m, p)
+            v1 = self.value(y, j, i, m, rwbq)
             if v1 > v0:
                 a, b, = ([aa[m], aa[m]] if m == minit else [aa[m-1], aa[m]])
                 v0, m0 = v1, m
@@ -217,15 +210,15 @@ class cohort:
         return m0, a, b, c
 
 
-    def yzaa2v(self, y, j, i, ni, p):
+    def value(self, y, j, i, ni, rwbq):
         """ Return the value at the given age y, productivity z[j] and asset aa[i]
         when the agent chooses his next period asset aa[ni] and current consumption c
         a1 is always within aL and aH """
-        [r, w, b, Bq, theta, tau] = p
-        c = max(self.neg, self.aa[i]*(1+(1-tau)*r[y])
-                + w[y]*ef[y,j]*(1-theta-tau) + b[y] + Bq[y] - self.aa[ni])
-        nv = sum([self.v[y+1,nj,ni]*self.pi[j,nj] for nj in range(self.zN)])
-        return self.util(c) + self.beta*self.s[y+1]*nv
+        [r, w, b, Bq, theta, tau] = rwbq
+        c = max(self.neg, self.aa[i]*(1+(1-tau[y])*r[y])
+                + w[y]*self.ef[y,j]*(1-theta[y]-tau[y]) + b[y] + Bq[y] - self.aa[ni])
+        ev = sum([self.v[y+1,nj,ni]*self.pi[j,nj] for nj in range(self.zN)])
+        return self.util(c) + self.beta*self.sp[y+1]*ev
 
 
     def clip(self, a):
@@ -240,7 +233,6 @@ class cohort:
     def uc(self, c):
         # marginal utility w.r.t. consumption
         return c**(-self.sigma)
-
 
 
 """The following are procedures to get steady state of the economy using direct
@@ -415,5 +407,34 @@ def tpath():
 
 
 if __name__ == '__main__':
-    findinitial()
-    transition()
+    start_time = datetime.now()
+    """Find Old and New Steady States with population growth rates ng and ng1"""
+    k = state(r_init=0.11,T=1)
+    c = cohort()
+    N = 20
+    #rgrid = linspace(0.0,0.2,6)
+
+    for n in range(N):
+        while (k.Bqdiff > 0.01):
+            c.optimalpolicy(array([k.rwbq for y in range(k.ly)]).T[0])
+            c.calculate_mu()
+            k.aggregate([c])
+            k.update_Bq()
+            print "Bqdiff=%2.2f" %(k.Bqdiff),"r0=%2.2f" %(k.r0[0]),\
+                    "L=%2.2f," %(k.L),"K1=%2.2f," %(k.K1),"Bq1=%2.2f," %(k.Bq1)
+        c.optimalpolicy(array([k.rwbq for y in range(k.ly)]).T[0])
+        c.calculate_mu()
+        k.aggregate([c])
+        if k.rdiff < 0.001:
+            print 'Economy Converged to SS! in',n+1,'iterations with', k.tol
+            break
+        if n >= N-1:
+            print 'Economy Not Converged in',n+1,'iterations with', k.tol
+            break
+        print "n=%2.2f" %(n),"r0=%2.2f" %(k.r0[0]),"r1=%2.2f" %(k.r1[0]),\
+                "L=%2.2f," %(k.L),"K1=%2.2f," %(k.K1),"Bq1=%2.2f," %(k.Bq1),\
+                "Kdiff=%2.2f," %(k.Kdiff),"Bqdiff=%2.2f," %(k.Bqdiff)
+        n = n + 1
+        k.update()
+    end_time = datetime.now()
+    print('Duration: {}'.format(end_time - start_time))
