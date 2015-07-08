@@ -17,7 +17,7 @@ from multiprocessing import Process, Lock, Manager
 
 
 class state:
-    """ This class is just a "struct" to hold  the collection of primitives defining
+    """ This class is just a "struct" to hold the collection of primitives defining
     an economy in which one or multiple generations live """
     def __init__(self, alpha=0.36, delta=0.06, tau=0.2378, theta=0.1, zeta=0.3,
         phi=0.7, tol=0.01, r_init=0.03, Bq_init=0,
