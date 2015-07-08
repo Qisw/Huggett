@@ -7,7 +7,7 @@ Economics, 38(3), 469-494.
 
 from scipy.interpolate import interp1d
 from scipy.optimize import fsolve, minimize_scalar
-from numpy import linspace, mean, array, zeros, absolute, loadtxt, dot, prod, genfromtxt, sum
+from numpy import linspace, mean, array, zeros, absolute, loadtxt, dot, prod, genfromtxt, sum, argmax, tile
 from matplotlib import pyplot as plt
 from datetime import datetime
 import time
@@ -20,7 +20,7 @@ class state:
     """ This class is just a "struct" to hold  the collection of primitives defining
     an economy in which one or multiple generations live """
     def __init__(self, alpha=0.36, delta=0.06, tau=0.2378, theta=0.1, zeta=0.3,
-        phi=0.5, tol=0.01, r_init=0.03, Bq_init=0,
+        phi=0.7, tol=0.01, r_init=0.03, Bq_init=0,
         T=1, ng = 1.012, dng = 0.0):
         # tr = 0.429, tw = 0.248, zeta=0.5, gy = 0.195, in Section 9.3. in Heer/Maussner
         """tr, tw and tb are tax rates on capital return, wage and tax for pension.
@@ -55,11 +55,7 @@ class state:
         self.w = array([((r0[t]+delta)/alpha)**(alpha/(alpha-1.0))*(1.0-alpha) for t in range(T)], dtype=float)
         self.b = array([self.theta[t]*self.w[t]*self.L[t]/self.pr[t] for t in range(T)], dtype=float)
         self.Bq0 = array([Bq_init for t in range(T)], dtype=float)
-        self.Bq1 = array([0 for t in range(T)], dtype=float)
-        self.rdiff = 10
-        self.Bqdiff = 10
-        self.Kdiff = 10
-        # container for r, w, b, Bq, theta, tau
+        self.Bq1 = array([1.0 for t in range(T)], dtype=float)
         self.rwbq = array([self.r0, self.w, self.b, self.Bq0, self.theta, self.tau])
 
 
@@ -72,26 +68,25 @@ class state:
         for t in range(T):
             tt = t+y if t <= T-ly-1 else -1
             self.K1[t] = sum([sum(cohorts[tt].mu[y,:,:],0).dot(aa)*pop[t,y] for y in range(ly)])
-            self.Bq1[t] = (1-self.zeta)*sum([sum(cohorts[tt].mu[y,:,:],0).dot(aa)*pop[t,y]\
-                                                      /sp[y]*(1-sp[y]) for y in range(ly)])
+            self.Bq1[t] = sum([sum(cohorts[tt].mu[y,:,:],0).dot(aa)*pop[t,y]\
+                            /sp[y]*(1-sp[y]) for y in range(ly)])*(1-self.zeta)/sum(pop[t])
             self.r1[t] = max(0.001,alpha*(self.K1[t]/self.L[t])**(alpha-1.0)-delta)
-        self.rdiff = max(absolute(self.r0 - self.r1))
-        self.Kdiff = max(absolute(self.K0 - self.K1))
-        self.Bqdiff = max(absolute(self.Bq0 - self.Bq1))
+            # print self.K0[t], self.r0[t], self.Bq0[t]
+            # print self.K1[t], self.r1[t], self.Bq1[t]
         """ Update the economy's aggregate K and N with weight phi on the old """
         # print "K=%2.2f," %(self.K[0]),"L=%2.2f," %(self.L[0]),"K/L=%2.2f" %(self.k[0])
 
 
-    def update(self):
+    def update_all(self):
         """ Update market prices, w and r, and many others according to new
         aggregate capital and labor paths for years 0,...,T from last iteration """
         alpha, delta = self.alpha, self.delta
         for t in range(self.T):
             self.r0[t] = self.phi*self.r0[t] + (1-self.phi)*self.r1[t]
             self.K0[t] = ((self.r0[t]+delta)/alpha)**(1.0/(alpha-1.0))*self.L[t]
-            self.w[t] = ((self.r0[t]+delta)/alpha)**(alpha/(alpha-1.0))*(alpha-1.0)
+            self.w[t] = ((self.r0[t]+delta)/alpha)**(alpha/(alpha-1.0))*(1.0-alpha)
             self.b[t] = self.theta[t]*self.w[t]*self.L[t]/self.pr[t]
-            self.Bq0[t] = self.Bq1[t]
+            # self.Bq0[t] = self.Bq1[t]
         # container for r, w, b, Bq, theta, tau
         self.rwbq = array([self.r0, self.w, self.b, self.Bq0, self.theta, self.tau])
         # print "for r=%2.2f," %(self.r[0]*100), "w=%2.2f," %(self.w[0]), \
@@ -104,11 +99,11 @@ class state:
         alpha, delta = self.alpha, self.delta
         for t in range(self.T):
             self.Bq0[t] = self.phi*self.Bq0[t] + (1-self.phi)*self.Bq1[t]
+            # self.Bq0[t] = self.Bq1[t]
         # container for r, w, b, Bq, theta, tau
         self.rwbq = array([self.r0, self.w, self.b, self.Bq0, self.theta, self.tau])
         # print "for r=%2.2f," %(self.r[0]*100), "w=%2.2f," %(self.w[0]), \
         #         "Tr=%2.2f," %(self.Tr[0]), "b=%2.2f," %(self.b[0]), "Beq.=%2.2f," %(self.Beq[0])
-
 
 
 class cohort:
@@ -128,6 +123,7 @@ class cohort:
         self.zN = zN = self.pi.shape[0]
         """ value function and its interpolation """
         self.v = array([[[0 for a in range(aN)] for z in range(zN)] for y in range(T)], dtype=float)
+        self.ev = array([[[0 for a in range(aN)] for z in range(zN)] for y in range(T)], dtype=float)
         #self.vtilde = [[] for y in range(T)]
         """ policy functions used in value function method """
         self.a = array([[[0 for a in range(aN)] for z in range(zN)] for y in range(T)], dtype=float)
@@ -144,102 +140,51 @@ class cohort:
         T = self.T
         aN, zN = self.aN, self.zN
         self.v = self.v*0
+        self.ev = self.ev*0
         # y = -1 : the oldest generation
         for j in range(self.zN):
-            for i in range(self.aN):
-                self.c[-1,j,i] = max(self.neg, self.aa[i]*(1+(1-tau[-1])*r[-1])
-                                 + w[-1]*ef[-1,j]*(1-theta[-1]-tau[-1]) + b[-1] + Bq[-1])
-                self.v[-1,j,i] = self.util(self.c[-1,j,i])
-                #self.vtilde[-1] = interp1d(self.aa, self.v[-1], kind='cubic')
+            c = self.aa*(1+(1-tau[-1])*r[-1]) \
+                    + w[-1]*ef[-1,j]*(1-theta[-1]-tau[-1]) + b[-1] + Bq[-1]
+            c[c<=0.0] = 1e-10
+            self.c[-1,j] = c
+            self.v[-1,j] = self.util(c)
+            # for i in range(self.aN):
+            #     self.c[-1,j,i] = max(self.neg, self.aa[i]*(1+(1-tau[-1])*r[-1])
+            #                      + w[-1]*ef[-1,j]*(1-theta[-1]-tau[-1]) + b[-1] + Bq[-1])
+            #     self.v[-1,j,i] = self.util(self.c[-1,j,i])
+            #     #self.vtilde[-1] = interp1d(self.aa, self.v[-1], kind='cubic')
+        self.ev[-1] = self.pi.dot(self.v[-1])
         # y = -2, -3,..., -60
         for y in range(-2, -(T+1), -1):
             for j in range(zN):
                 # print self.apath
-                m0 = 0
-                for i in range(self.aN):    # l = 0, 1, ..., 50
-                    # Find a bracket within which optimal a' lies
-                    m = max(0, m0)  # Rch91v.g uses m = max(0, m0-1)
-                    m0, a0, b0, c0 = self.GetBracket(y, j, i, m, rwbq)
-                    # Find optimal a' using Golden Section Search
-                    if a0 == b0:
-                        self.a[y,j,i] = 0
-                    elif b0 == c0:
-                        self.a[y,j,i] = self.aN - 1
-                    else:
-                        self.a[y,j,i] = m0
-                    # Find c and v given current and next period asset aa[i], aa[ni]
-                    self.c[y,j,i] = self.aa[i]*(1+(1-tau[y])*r[y]) \
-                                    + w[y]*ef[y,j]*(1-theta[y]-tau[y]) + b[y] + Bq[y] \
-                                    - self.aa[self.a[y,j,i]]
-                    # ev = sum([self.v[y+1,nj,self.a[y,j,i]]*self.pi[j,nj]
-                    #                                 for nj in range(self.zN)])
-                    ev = self.pi[j].dot(self.v[y+1,:,self.a[y,j,i]])
-                    self.v[y,j,i] = self.util(self.c[y,j,i]) + self.beta*self.sp[y+1]*ev
+                na = tile(self.aa,(aN,1)).T*(1+(1-tau[y])*r[y]) \
+                        + w[y]*ef[y,j]*(1-theta[y]-tau[y]) + b[y] + Bq[y]
+                c = na - tile(self.aa,(aN,1))
+                c[c<=0.0] = 1e-10
+                v = self.util(c) + self.beta*self.sp[y+1]*tile(self.ev[y+1,j],(aN,1))
+                self.a[y,j] = argmax(v,1)
+                for i in range(aN):
+                    self.v[y,j,i] = v[i,self.a[y,j,i]]
+                    self.c[y,j,i] = c[i,self.a[y,j,i]]
+            self.ev[y] = self.pi.dot(self.v[y])
 
 
     def calculate_mu(self):
         """ find distribution of agents w.r.t. age, productivity and asset """
-        a, pi = self.a, self.pi
         self.mu = self.mu*0
         self.mu[0,:,0] = self.muz[0]
         for y in range(1,self.T):
             for j in range(self.zN):
                 for i in range(self.aN):
-                    self.mu[y,:,a[y-1,j,i]] = self.mu[y,:,a[y-1,j,i]] \
-                                                + self.mu[y-1,j,i]*pi[j]
-
-
-    def GetBracket(self, y, j, i, m, rwbq):
-        """ Find a bracket (a,b,c) such that policy function for next period asset level,
-        a[x;asset[l],y] lies in the interval (a,b) """
-        aa = self.aa
-        a, b, c = aa[0], 2*aa[0]-aa[1], 2*aa[0]-aa[2]
-        minit = m
-        m0 = m
-        v0 = self.neg
-        """ The slow part of if slope != float("inf") is no doubt converting
-        the string to a float. """
-        while (a > b) or (b > c):
-            v1 = self.value(y, j, i, m, rwbq)
-            if v1 > v0:
-                a, b, = ([aa[m], aa[m]] if m == minit else [aa[m-1], aa[m]])
-                v0, m0 = v1, m
-            else:
-                c = aa[m]
-            if m == self.aN - 1:
-                a, b, c = aa[m-1], aa[m], aa[m]
-            m = m + 1
-        return m0, a, b, c
-
-
-    def value(self, y, j, i, ni, rwbq):
-        """ Return the value at the given age y, productivity z[j] and asset aa[i]
-        when the agent chooses his next period asset aa[ni] and current consumption c
-        a1 is always within aL and aH """
-        [r, w, b, Bq, theta, tau] = rwbq
-        c = self.aa[i]*(1+(1-tau[y])*r[y])\
-                + w[y]*self.ef[y,j]*(1-theta[y]-tau[y]) + b[y] + Bq[y] - self.aa[ni]
-        ev = sum([self.v[y+1,nj,ni]*self.pi[j,nj] for nj in range(self.zN)])
-        # ev = self.pi[j].dot(self.v[y+1,:,ni])
-        if c <= 0:
-            value = self.neg
-        else:
-            value = self.util(c) + self.beta*self.sp[y+1]*ev
-        return value
-
-
-    def clip(self, a):
-        return self.aL if a <= self.aL else self.aH if a >= self.aH else a
+                    self.mu[y,:,self.a[y-1,j,i]] = self.mu[y,:,self.a[y-1,j,i]] \
+                                                + self.mu[y-1,j,i]*self.pi[j]
 
 
     def util(self, c):
         # calculate utility value with given consumption
+        # c = c if c > 0 else 1e-10
         return c**(1.0-self.sigma)/(1.0-self.sigma)
-
-
-    def uc(self, c):
-        # marginal utility w.r.t. consumption
-        return c**(-self.sigma)
 
 
 """The following are procedures to get steady state of the economy using direct
@@ -267,6 +212,7 @@ def findinitial(ng0=1.01, ng1=1.00, W=45, R=30, TG=4, alpha=0.3, beta=0.96, delt
     why-am-i-getting-an-error-about-my-class-defining-slots-when-trying-to-pickl"""
     end_time = datetime.now()
     print('Duration: {}'.format(end_time - start_time))
+
 
 #병렬처리를 위한 for loop 내 로직 분리
 def transition_sub1(g,T,TS,Et,a1,e1):
@@ -418,39 +364,29 @@ if __name__ == '__main__':
     """Find Old and New Steady States with population growth rates ng and ng1"""
     k = state(r_init=0.11,T=1)
     c = cohort()
-    N = 1
-    #rgrid = linspace(0.0,0.2,6)
+    N = 20
 
     for n in range(N):
-        while (k.Bqdiff > 0.01):
-            start_time1 = datetime.now()
-            c.optimalpolicy(array([k.rwbq for y in range(k.ly)]).T[0])
-            end_time1 = datetime.now()
-            print('Duration of optimalpolicy: {}'.format(end_time1 - start_time1))
-            start_time2 = datetime.now()
-            c.calculate_mu()
-            end_time2 = datetime.now()
-            print('Duration of calculate_mu: {}'.format(end_time2 - start_time2))
-            start_time3 = datetime.now()
-            k.aggregate([c])
-            k.update_Bq()
-            end_time3 = datetime.now()
-            print('Duration of aggregate and update: {}'.format(end_time3 - start_time3))
-            print "Bqdiff=%2.2f" %(k.Bqdiff),"r0=%2.2f" %(k.r0[0]),\
-                    "L=%2.2f," %(k.L),"K1=%2.2f," %(k.K1),"Bq1=%2.2f," %(k.Bq1)
         c.optimalpolicy(array([k.rwbq for y in range(k.ly)]).T[0])
         c.calculate_mu()
         k.aggregate([c])
-        if k.rdiff < 0.001:
+        while True:
+            k.update_Bq()
+            if max(absolute(k.Bq0 - k.Bq1)) < 0.01:
+                print 'Bq converged to', k.Bq1
+                break
+            c.optimalpolicy(array([k.rwbq for y in range(k.ly)]).T[0])
+            c.calculate_mu()
+            k.aggregate([c])
+        k.update_all()
+        if max(absolute(k.K0 - k.K1)) < k.tol:
             print 'Economy Converged to SS! in',n+1,'iterations with', k.tol
             break
         if n >= N-1:
             print 'Economy Not Converged in',n+1,'iterations with', k.tol
             break
-        print "n=%2.2f" %(n),"r0=%2.2f" %(k.r0[0]),"r1=%2.2f" %(k.r1[0]),\
-                "L=%2.2f," %(k.L),"K1=%2.2f," %(k.K1),"Bq1=%2.2f," %(k.Bq1),\
-                "Kdiff=%2.2f," %(k.Kdiff),"Bqdiff=%2.2f," %(k.Bqdiff)
+        print '\n',"n=%2.2f" %(n),"r0=%2.3f" %(k.r0[0]),"r1=%2.3f" %(k.r1[0]),\
+                "L=%2.2f," %(k.L),"K0=%2.3f," %(k.K0),"K1=%2.3f," %(k.K1),"Bq1=%2.2f," %(k.Bq1),'\n'
         n = n + 1
-        k.update()
     end_time = datetime.now()
     print('Duration: {}'.format(end_time - start_time))
