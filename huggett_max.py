@@ -74,6 +74,7 @@ class state:
         spr = (1-sp)/sp
         """Aggregate all cohorts' capital and labor supply at each year"""
         for t in range(T):
+            # print cs[t].mu.shape, 't=',t
             if t <= T-mls-1:
                 self.K1[t] = sum([sum(cs[t+y].mu[-(y+1)],0).dot(aa)*pop[t,-(y+1)]
                                         for y in range(mls)])
@@ -111,7 +112,7 @@ class cohort:
         aN=51, tol=0.01, neg=-1e10, W=45, R=34, a0 = 0):
         self.beta, self.sigma = beta, sigma
         self.R, self.W, self.y = R, W, y
-        self.mls = mls = (y+1 if (y >= 0) and (y <= W+R-2) else W+R) # mls is maximum life span
+        # self.mls = mls = (y+1 if (y >= 0) and (y <= W+R-2) else W+R) # mls is maximum life span
         self.aH, self.aL, self.aN, self.aa = aH, aL, aN, aL+aH*linspace(0,1,aN)
         self.tol, self.neg = tol, neg
         self.sp = loadtxt('sp.txt', delimiter='\n')  # survival probability
@@ -119,6 +120,7 @@ class cohort:
         self.pi = genfromtxt('pi.csv', delimiter=',')  # productivity transition probability
         self.ef = genfromtxt('ef.csv', delimiter=',')
         self.zN = zN = self.pi.shape[0]
+        self.mls = mls = self.ef.shape[0]
         """ container for value function and expected value function """
         # v[y,j,i] is the value of an y-yrs-old agent with asset i and productity j
         self.v = array([[[0 for a in range(aN)] for z in range(zN)] for y in range(mls)], dtype=float)
@@ -180,92 +182,6 @@ class cohort:
 
 """The following are procedures to get steady state of the economy using direct
 age-profile iteration and projection method"""
-
-
-def findinitial(ng0=1.01, ng1=1.00, W=45, R=30, TG=4, alpha=0.3, beta=0.96, delta=0.08):
-    start_time = datetime.now()
-    """Find Old and New Steady States with population growth rates ng and ng1"""
-    E0, g0 = value(state(TG=1,W=W,R=R,ng=ng0,alpha=alpha,delta=delta),
-                    cohort(beta=beta,W=W,R=R))
-    E1, g1 = value(state(TG=1,W=W,R=R,ng=ng1,alpha=alpha,delta=delta),
-                    cohort(beta=beta,W=W,R=R))
-    mls = W + R
-    TS = mls*TG
-    """Initialize Transition Path for t = 0,...,TS-1"""
-    Et= state(TG=TG,W=W,R=R,ng=ng0,dng=(ng1-ng0),k=E1.k[0],alpha=alpha,delta=delta)
-    Et.k[:TS-mls] = linspace(E0.k[-1],E1.k[0],TS-mls)
-    Et.update()
-    with open('E.pickle','wb') as f:
-        pickle.dump([E0, E1, Et, 0], f)
-    with open('G.pickle','wb') as f:
-        pickle.dump([g0.apath, g0.epath, g0.lpath, g1.apath, g1.epath, g1.lpath], f)
-    """http://stackoverflow.com/questions/2204155/
-    why-am-i-getting-an-error-about-my-class-defining-slots-when-trying-to-pickl"""
-    end_time = datetime.now()
-    print('Duration: {}'.format(end_time - start_time))
-
-
-def spath(g):
-    fig = plt.figure(facecolor='white')
-    ax = fig.add_subplot(111)
-    ax1 = fig.add_subplot(221)
-    ax2 = fig.add_subplot(222)
-    ax3 = fig.add_subplot(223)
-    ax4 = fig.add_subplot(224)
-    fig.subplots_adjust(hspace=.5, wspace=.3, left=None, right=None, top=None, bottom=None)
-    ax.spines['top'].set_color('none')
-    ax.spines['bottom'].set_color('none')
-    ax.spines['left'].set_color('none')
-    ax.spines['right'].set_color('none')
-    ax.tick_params(labelcolor='w', top='off', bottom='off', left='off', right='off')
-    ax1.plot(g.apath)
-    ax2.plot(g.lpath)
-    ax3.plot(g.cpath)
-    ax4.plot(g.upath)
-    ax.set_xlabel('generation')
-    ax1.set_title('Asset')
-    ax2.set_title('Labor')
-    ax3.set_title('Consumption')
-    ax4.set_title('Utility')
-    plt.show()
-    # time.sleep(1)
-    # plt.close() # plt.close("all")
-
-
-def tpath():
-    with open('E.pickle','rb') as f:
-        [E0, E1, Et, it] = pickle.load(f)
-    fig = plt.figure(facecolor='white')
-    ax = fig.add_subplot(111)
-    ax1 = fig.add_subplot(321)
-    ax2 = fig.add_subplot(322)
-    ax3 = fig.add_subplot(323)
-    ax4 = fig.add_subplot(324)
-    ax5 = fig.add_subplot(325)
-    ax6 = fig.add_subplot(326)
-    fig.subplots_adjust(hspace=.5, wspace=.3, left=None, right=None, top=None, bottom=None)
-    ax.spines['top'].set_color('none')
-    ax.spines['bottom'].set_color('none')
-    ax.spines['left'].set_color('none')
-    ax.spines['right'].set_color('none')
-    ax.tick_params(labelcolor='w', top='off', bottom='off', left='off', right='off')
-    ax1.plot(Et.k)
-    ax2.plot(Et.r)
-    ax3.plot(Et.L)
-    ax4.plot(Et.w)
-    ax5.plot(Et.K)
-    ax6.plot(Et.C)
-    ax.set_xlabel('generation')
-    ax.set_title('R:' + str(Et.R) + 'W:' + str(Et.W) + 'TS:' + str(Et.TS), y=1.08)
-    ax1.set_title('Capital/Labor')
-    ax2.set_title('Interest Rate')
-    ax3.set_title('Labor')
-    ax4.set_title('Wage')
-    ax5.set_title('Capital')
-    ax6.set_title('Consumption')
-    plt.show()
-    # time.sleep(1)
-    # plt.close() # plt.close("all")
 
 
 def findsteadystate(ng=1.012,N=20):
@@ -336,18 +252,18 @@ def transition_sub1(c,prices,mu_t):
         c.optimalpolicy(prices.T[c.y-mls+1:c.y+1].T)
         c.calculate_mu()
     elif (c.y < mls-1):
-        c.optimalpolicy(prices.T[:,:c.y+1].T)
+        c.optimalpolicy(prices.T[:c.y+1].T)
         c.calculate_mu()
     else:
         c.mu = mu_t
 
 
-def transition(N=15,T=300,ng_i=1.012,ng_t=1.0):
+def transition(N=15,T=85,ng_i=1.012,ng_t=1.0):
     k_i, c_i = findsteadystate(ng=ng_i)
     k_t, c_t = findsteadystate(ng=ng_t)
     k_tp = state(c_i, T=T, r_init=k_i.r0, r_term=k_t.r0, Bq_init=k_i.Bq0, Bq_term=k_t.Bq0,
                       ng_init=ng_i, ng_term=ng_t)
-    for t in range(0,300,50):
+    for t in range(0,180,30):
         print "r0=%2.3f" %(k_tp.r0[t]),"r1=%2.3f" %(k_tp.r1[t]),"L=%2.3f," %(k_tp.L[t]),\
                 "K0=%2.3f," %(k_tp.K0[t]),"K1=%2.3f," %(k_tp.K1[t]),"Bq1=%2.3f," %(k_tp.Bq1[t])
     """Generate T cohorts who die in t = 0,...,T-1 with initial asset g0.apath[-t-1]"""
@@ -358,26 +274,26 @@ def transition(N=15,T=300,ng_i=1.012,ng_t=1.0):
         print 'transition('+str(n)+') is in progress : {}'.format(start_time)
         jobs = []
         for c in cohorts:
-            # transition_sub1(c,k_tp.prices,c_t.mu)
-            p = Process(target=transition_sub1, args=(c,k_tp.prices,c_t.mu))
-            p.start()
-            jobs.append(p)
-            #병렬처리 개수 지정 20이면 20개 루프를 동시에 병렬로 처리
-            if len(jobs) % 4 == 0:
-                for p in jobs:
-                    p.join()
-                print 'transition('+str(n)+') is in progress : {}'.format(datetime.now())
-                jobs=[]
-        if len(jobs) > 0:
-            for p in jobs:
-                p.join()
+            transition_sub1(c,k_tp.prices,c_t.mu)
+        #     p = Process(target=transition_sub1, args=(c,k_tp.prices,c_t.mu))
+        #     p.start()
+        #     jobs.append(p)
+        #     #병렬처리 개수 지정 20이면 20개 루프를 동시에 병렬로 처리
+        #     if len(jobs) % 8 == 0:
+        #         for p in jobs:
+        #             p.join()
+        #         print 'transition('+str(n)+') is in progress : {}'.format(datetime.now())
+        #         jobs=[]
+        # if len(jobs) > 0:
+        #     for p in jobs:
+        #         p.join()
         k_tp.aggregate(cohorts)
         k_tp.update_all()
         k_tp.update_Bq()
         end_time = datetime.now()
         print 'transition('+str(n)+') is done : {}'.format(end_time)
         print 'transition ('+str(n)+') loop: {}'.format(end_time - start_time)
-        for t in range(0,300,50):
+        for t in range(0,180,30):
             print "r0=%2.3f" %(k_tp.r0[t]),"r1=%2.3f" %(k_tp.r1[t]),"L=%2.3f," %(k_tp.L[t]),\
                 "K0=%2.3f," %(k_tp.K0[t]),"K1=%2.3f," %(k_tp.K1[t]),"Bq1=%2.3f," %(k_tp.Bq1[t])
         if max(absolute(k_tp.K0 - k_tp.K1)) < k_tp.tol:
