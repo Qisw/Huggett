@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Jan. 12, 2015, Hyun Chang Yi
-Computes the model of Section 9.3. in Heer/Maussner using 
+Computes the model of Section 9.3. in Heer/Maussner using
 direct method from Secion 9.1.
 
 HOUSEHOLD'S UTILITY FUNCTION IS DIFFERENT FROM THAT OF SECTION 9.1. AND 9.2.
@@ -43,8 +43,8 @@ class state:
         for t in range(T-1):
             self.pop[t,t+1:] = m0[t+1:]*ng0**(t+1)
         """Construct containers for market prices, tax rates, transfers, other aggregate variables"""
-        self.Pt = Pt = array([sum(self.pop[t]) for t in range(TS)], dtype=float) 
-        self.Pr = Pr = array([sum([self.pop[t,y] for y in range(W,T)]) for t in range(TS)], dtype=float) 
+        self.Pt = Pt = array([sum(self.pop[t]) for t in range(TS)], dtype=float)
+        self.Pr = Pr = array([sum([self.pop[t,y] for y in range(W,T)]) for t in range(TS)], dtype=float)
         self.tr = array([tr for t in range(TS)], dtype=float)
         self.tw = array([tw for t in range(TS)], dtype=float)
         self.gy = array([gy for t in range(TS)], dtype=float)
@@ -146,7 +146,7 @@ class cohort:
 
 
     def findvpath(self, p):
-        """ Given prices, transfers, benefits and tax rates over one's life-cycle, 
+        """ Given prices, transfers, benefits and tax rates over one's life-cycle,
         value and decision functions are calculated ***BACKWARD*** """
         [r, w, b, tr, tw, tb, Tr] = p
         T = self.T
@@ -202,7 +202,7 @@ class cohort:
 
 
     def GetBracket(self, y, l, m, p):
-        """ Find a bracket (a,b,c) such that policy function for next period asset level, 
+        """ Find a bracket (a,b,c) such that policy function for next period asset level,
         a[x;asset[l],y] lies in the interval (a,b) """
         aa = self.aa
         a, b, c = aa[0], aa[0]-aa[1], aa[0]-aa[2]
@@ -222,8 +222,8 @@ class cohort:
 
 
     def findv(self, y, a0, a1, p):
-        """ Return the value at the given generation and asset a0 and 
-        corresponding consumption and labor supply when the agent chooses his 
+        """ Return the value at the given generation and asset a0 and
+        corresponding consumption and labor supply when the agent chooses his
         next period asset a1, current period consumption c and labor n
         a1 is always within aL and aH """
         [r, w, b, tr, tw, tb, Tr] = p
@@ -265,7 +265,7 @@ class cohort:
         return -(1-self.gamma)*self.util(c, l)*(1-self.sigma)/(1-l)
 
 
-"""The following are procedures to get steady state of the economy using direct 
+"""The following are procedures to get steady state of the economy using direct
 age-profile iteration and projection method"""
 
 
@@ -314,7 +314,7 @@ def transition(N=15,beta=0.96):
     """Iteratively Calculate all generations optimal consumption and labour supply"""
     for n in range(N):
         start_time = datetime.now()
-        print 'transition('+str(n)+') is start : {}'.format(start_time) 
+        print 'transition('+str(n)+') is start : {}'.format(start_time)
         jobs = []
         for g in gs:
             p = Process(target=transition_sub1, args=(g,T,TS,Et,a1,e1))
@@ -341,7 +341,7 @@ def transition(N=15,beta=0.96):
         Et.update()
         print 'after',n+1,'iterations over all cohorts,','r:', E0.r[0], Et.r[0::30]
         end_time = datetime.now()
-        print 'transition('+str(n)+') is end : {}'.format(end_time) 
+        print 'transition('+str(n)+') is end : {}'.format(end_time)
         print 'transition n loop: {}'.format(end_time - start_time)
         with open('E.pickle','wb') as f:
             pickle.dump([E0, E1, Et, n+1], f)
@@ -434,8 +434,8 @@ def tpath():
     plt.show()
     # time.sleep(1)
     # plt.close() # plt.close("all")
-    
-    
+
+
 if __name__ == '__main__':
     findinitial()
     transition()
