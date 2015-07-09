@@ -71,14 +71,20 @@ class state:
         """Aggregate Capital, Labor in Efficiency unit and Bequest over all cohorts"""
         T, mls, alpha, delta, zeta = self.T, self.mls, self.alpha, self.delta, self.zeta
         aa, pop, sp = self.aa, self.pop, self.sp
+        spr = (1-sp)/sp
         """Aggregate all cohorts' capital and labor supply at each year"""
         for t in range(T):
-            dt = t+y if t <= T-mls-1 else -1
-            self.K1[t] = sum([sum(cs[dt].mu[y,:,:],0).dot(aa)*pop[t,y]
-                                                for y in range(mls)])
-            self.Bq1[t] = sum([sum(cs[dt].mu[y,:,:],0).dot(aa)*pop[t,y]/sp[y]*(1-sp[y])
-                                                for y in range(mls)])*(1-zeta)/sum(pop[t])
-            self.r1[t] = max(0.001,alpha*(self.K1[t]/self.L[t])**(alpha-1.0)-delta)
+            if t <= T-mls-1:
+                self.K1[t] = sum([sum(cs[t+y].mu[-(y+1)],0).dot(aa)*pop[t,-(y+1)]
+                                        for y in range(mls)])
+                self.Bq1[t] = sum([sum(cs[t+y].mu[-(y+1)],0).dot(aa)*pop[t,-(y+1)]*spr[-(y+1)]
+                                        for y in range(mls)])*(1-zeta)/sum(pop[t])
+            else:
+                self.K1[t] = sum([sum(cs[-1].mu[-(y+1)],0).dot(aa)*pop[t,-(y+1)]
+                                        for y in range(mls)])
+                self.Bq1[t] = sum([sum(cs[-1].mu[-(y+1)],0).dot(aa)*pop[t,-(y+1)]*spr[-(y+1)]
+                                        for y in range(mls)])*(1-zeta)/sum(pop[t])
+        self.r1 = alpha*(self.K1/self.L)**(alpha-1.0)-delta
 
 
     def update_all(self):
@@ -292,7 +298,7 @@ def findsteadystate(ng=1.012,N=20):
     return k, c
 
 
-if __name__ == '__main__':
+# if __name__ == '__main__':
     start_time = datetime.now()
     """Find Old and New Steady States with population growth rates ng and ng1"""
     c = cohort()
@@ -329,18 +335,21 @@ def transition_sub1(c,prices,mu_t):
     if (c.y >= mls-1) and (c.y <= T-(mls+1)):
         c.optimalpolicy(prices.T[c.y-mls+1:c.y+1].T)
         c.calculate_mu()
-    elif (g.y < mls-1):
+    elif (c.y < mls-1):
         c.optimalpolicy(prices.T[:,:c.y+1].T)
         c.calculate_mu()
     else:
         c.mu = mu_t
 
 
-def transition(N=15,ng_i=1.012,ng_t=1.0-0.012):
+def transition(N=15,T=300,ng_i=1.012,ng_t=1.0):
     k_i, c_i = findsteadystate(ng=ng_i)
     k_t, c_t = findsteadystate(ng=ng_t)
-    k_tp = state(c_i, r_init=k_i.r, r_term=k_t.r, Bq_init=k_i.Bq, Bq_term=k_t.Bq,
+    k_tp = state(c_i, T=T, r_init=k_i.r0, r_term=k_t.r0, Bq_init=k_i.Bq0, Bq_term=k_t.Bq0,
                       ng_init=ng_i, ng_term=ng_t)
+    for t in range(0,300,50):
+        print "r0=%2.3f" %(k_tp.r0[t]),"r1=%2.3f" %(k_tp.r1[t]),"L=%2.3f," %(k_tp.L[t]),\
+                "K0=%2.3f," %(k_tp.K0[t]),"K1=%2.3f," %(k_tp.K1[t]),"Bq1=%2.3f," %(k_tp.Bq1[t])
     """Generate T cohorts who die in t = 0,...,T-1 with initial asset g0.apath[-t-1]"""
     cohorts = [cohort(y=t) for t in range(T)]
     """Iteratively Calculate all generations optimal consumption and labour supply"""
@@ -349,11 +358,12 @@ def transition(N=15,ng_i=1.012,ng_t=1.0-0.012):
         print 'transition('+str(n)+') is in progress : {}'.format(start_time)
         jobs = []
         for c in cohorts:
+            # transition_sub1(c,k_tp.prices,c_t.mu)
             p = Process(target=transition_sub1, args=(c,k_tp.prices,c_t.mu))
             p.start()
             jobs.append(p)
             #병렬처리 개수 지정 20이면 20개 루프를 동시에 병렬로 처리
-            if len(jobs) % 20 == 0:
+            if len(jobs) % 4 == 0:
                 for p in jobs:
                     p.join()
                 print 'transition('+str(n)+') is in progress : {}'.format(datetime.now())
@@ -364,16 +374,9 @@ def transition(N=15,ng_i=1.012,ng_t=1.0-0.012):
         k_tp.aggregate(cohorts)
         k_tp.update_all()
         k_tp.update_Bq()
-
-        # print 'after',n+1,'iterations over all cohorts,','r:', E0.r[0], Et.r[0::30]
         end_time = datetime.now()
         print 'transition('+str(n)+') is done : {}'.format(end_time)
         print 'transition ('+str(n)+') loop: {}'.format(end_time - start_time)
-        # with open('E.pickle','wb') as f:
-        #     pickle.dump([E0, E1, Et, n+1], f)
-        # with open('GS.pickle','wb') as f:
-        #     pickle.dump([[cohorts[t].apath for t in range(TS)], [cohorts[t].cpath for t in range(TS)],
-        #                     [cohorts[t].lpath for t in range(TS)], n+1], f)
         for t in range(0,300,50):
             print "r0=%2.3f" %(k_tp.r0[t]),"r1=%2.3f" %(k_tp.r1[t]),"L=%2.3f," %(k_tp.L[t]),\
                 "K0=%2.3f," %(k_tp.K0[t]),"K1=%2.3f," %(k_tp.K1[t]),"Bq1=%2.3f," %(k_tp.Bq1[t])
@@ -383,3 +386,4 @@ def transition(N=15,ng_i=1.012,ng_t=1.0-0.012):
         if n >= N-1:
             print 'Transition Path Not Converged! in', n+1,'iterations with', k_tp.tol
             break
+    return k_tp, cohorts

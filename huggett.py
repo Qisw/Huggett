@@ -149,7 +149,10 @@ class cohort:
             for i in range(self.aN):
                 self.c[-1,j,i] = max(self.neg, self.aa[i]*(1+(1-tau[-1])*r[-1])
                                  + w[-1]*ef[-1,j]*(1-theta[-1]-tau[-1]) + b[-1] + Bq[-1])
-                self.v[-1,j,i] = self.util(self.c[-1,j,i])
+                if self.c[-1,j,i] <= 0:
+                    self.v[-1,j,i] = self.neg
+                else:
+                    self.v[-1,j,i] = self.util(self.c[-1,j,i])
                 #self.vtilde[-1] = interp1d(self.aa, self.v[-1], kind='cubic')
         # y = -2, -3,..., -60
         for y in range(-2, -(T+1), -1):
@@ -171,10 +174,19 @@ class cohort:
                     self.c[y,j,i] = self.aa[i]*(1+(1-tau[y])*r[y]) \
                                     + w[y]*ef[y,j]*(1-theta[y]-tau[y]) + b[y] + Bq[y] \
                                     - self.aa[self.a[y,j,i]]
+<<<<<<< Updated upstream
                     # ev = sum([self.v[y+1,nj,self.a[y,j,i]]*self.pi[j,nj]
                     #                                 for nj in range(self.zN)])
                     ev = self.pi[j].dot(self.v[y+1,:,self.a[y,j,i]])
                     self.v[y,j,i] = self.util(self.c[y,j,i]) + self.beta*self.sp[y+1]*ev
+=======
+                    ev = sum([self.v[y+1,nj,self.a[y,j,i]]*self.pi[j,nj]
+                                                    for nj in range(self.zN)])
+                    if self.c[y,j,i] <= 0:
+                        self.v[y,j,i] = self.neg
+                    else:
+                        self.v[y,j,i] = self.util(self.c[y,j,i]) + self.beta*self.sp[y+1]*ev
+>>>>>>> Stashed changes
 
 
     def calculate_mu(self):
