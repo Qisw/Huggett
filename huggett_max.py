@@ -19,8 +19,9 @@ from multiprocessing import Process, Lock, Manager
 class state:
     """ This class is just a "struct" to hold the collection of primitives defining
     an economy in which one or multiple generations live """
-    def __init__(self, cohort, alpha=0.36, delta=0.06, tau=0.2378, theta=0.1, zeta=0.3,
+    def __init__(self, alpha=0.36, delta=0.06, tau=0.2378, theta=0.1, zeta=0.3,
         phi=0.7, tol=0.01, r_init=0.03, r_term=0.03, Bq_init=0, Bq_term=0,
+        aH=50.0, aL=0.0, aN=51,
         T=1, ng_init = 1.012, ng_term = 1.0-.012):
         # tr = 0.429, tw = 0.248, zeta=0.5, gy = 0.195, in Section 9.3. in Heer/Maussner
         """tr, tw and tb are tax rates on capital return, wage and tax for pension.
@@ -31,7 +32,7 @@ class state:
         self.theta = theta
         self.T = T
         self.phi, self.tol = phi, tol
-        self.aa = cohort.aa
+        self.aH, self.aL, self.aN, self.aa = aH, aL, aN, aL+aH*linspace(0,1,aN)
         """ LOAD PARAMETERS : SURVIVAL PROB., PRODUCTIVITY TRANSITION PROB. AND ... """
         self.sp = sp = loadtxt('sp.txt', delimiter='\n')  # survival probability
         self.pi = genfromtxt('pi.csv', delimiter=',')  # productivity transition probability
@@ -168,7 +169,7 @@ class cohort:
 
     def calculate_mu(self):
         """ find distribution of agents w.r.t. age, productivity and asset """
-        self.mu = self.mu*0
+        # self.mu = self.mu*0
         self.mu[0,:,0] = self.muz[0]
         for y in range(1,self.mls):
             for j in range(self.zN):
@@ -188,7 +189,7 @@ def findsteadystate(ng=1.012,N=20):
     """Find Old and New Steady States with population growth rates ng and ng1"""
     start_time = datetime.now()
     c = cohort()
-    k = state(c,ng_init=ng)
+    k = state(ng_init=ng)
     for n in range(N):
         c.optimalpolicy(k.prices)
         c.calculate_mu()
@@ -214,34 +215,13 @@ def findsteadystate(ng=1.012,N=20):
     return k, c
 
 
-# if __name__ == '__main__':
-    start_time = datetime.now()
-    """Find Old and New Steady States with population growth rates ng and ng1"""
-    c = cohort()
-    k = state(c,r_init=0.11,T=1)
-    N = 20
-    for n in range(N):
-        c.optimalpolicy(k.prices)
-        c.calculate_mu()
-        k.aggregate([c])
-        while True:
-            k.update_Bq()
-            if max(absolute(k.Bq0 - k.Bq1)) < k.tol:
-                break
-            c.optimalpolicy(k.prices)
-            c.calculate_mu()
-            k.aggregate([c])
-        k.update_all()
-        print "n=%i" %(n+1),"r0=%2.3f" %(k.r0),"r1=%2.3f" %(k.r1),\
-                "L=%2.3f," %(k.L),"K0=%2.3f," %(k.K0),"K1=%2.3f," %(k.K1),"Bq1=%2.3f," %(k.Bq1)
-        if max(absolute(k.K0 - k.K1)) < k.tol:
-            print 'Economy Converged to SS! in',n+1,'iterations with', k.tol
-            break
-        if n >= N-1:
-            print 'Economy Not Converged in',n+1,'iterations with', k.tol
-            break
-    end_time = datetime.now()
-    print('Duration: {}'.format(end_time - start_time))
+def initialize(ng_i=1.012,ng_t=1.0):
+    k_t, c_t = findsteadystate(ng=ng_t)
+    k_i, c_i = findsteadystate(ng=ng_i)
+    """Iteratively Calculate all generations optimal consumption and labour supply"""
+    with open('cc.pickle','wb') as f:
+        pickle.dump([c_i, c_t, k_i, k_t], f)
+        # pickle.dump([k_t], f)
 
 
 #병렬처리를 위한 for loop 내 로직 분리
@@ -250,50 +230,50 @@ def transition_sub1(c,prices,mu_t):
     T = prices.shape[1]
     if (c.y >= mls-1) and (c.y <= T-(mls+1)):
         c.optimalpolicy(prices.T[c.y-mls+1:c.y+1].T)
-        c.calculate_mu()
     elif (c.y < mls-1):
         c.optimalpolicy(prices.T[:c.y+1].T)
-        c.calculate_mu()
     else:
-        c.mu = mu_t
+        c.optimalpolicy(prices.T[-1].T)
+    c.R = 5
+    c.calculate_mu()
+    # print sum(c.mu)
 
 
-def transition(N=15,T=85,ng_i=1.012,ng_t=1.0):
-    k_i, c_i = findsteadystate(ng=ng_i)
-    k_t, c_t = findsteadystate(ng=ng_t)
-    k_tp = state(c_i, T=T, r_init=k_i.r0, r_term=k_t.r0, Bq_init=k_i.Bq0, Bq_term=k_t.Bq0,
+def transition(N=15, TP=20, ng_i=1.012, ng_t=1.0):
+    with open('cc.pickle','rb') as f:
+        [c_i, c_t, k_i, k_t] = pickle.load(f)
+    k_tp = state(T=TP, r_init=k_i.r0, r_term=k_t.r0, Bq_init=k_i.Bq0, Bq_term=k_t.Bq0,
                       ng_init=ng_i, ng_term=ng_t)
-    for t in range(0,180,30):
-        print "r0=%2.3f" %(k_tp.r0[t]),"r1=%2.3f" %(k_tp.r1[t]),"L=%2.3f," %(k_tp.L[t]),\
-                "K0=%2.3f," %(k_tp.K0[t]),"K1=%2.3f," %(k_tp.K1[t]),"Bq1=%2.3f," %(k_tp.Bq1[t])
     """Generate T cohorts who die in t = 0,...,T-1 with initial asset g0.apath[-t-1]"""
-    cohorts = [cohort(y=t) for t in range(T)]
-    """Iteratively Calculate all generations optimal consumption and labour supply"""
+    cohorts = [cohort(y=t) for t in range(TP)]
     for n in range(N):
         start_time = datetime.now()
-        print 'transition('+str(n)+') is in progress : {}'.format(start_time)
+        print 'multiprocessing :'+str(n)+' is in progress : {} \n'.format(start_time)
         jobs = []
         for c in cohorts:
-            transition_sub1(c,k_tp.prices,c_t.mu)
-        #     p = Process(target=transition_sub1, args=(c,k_tp.prices,c_t.mu))
-        #     p.start()
-        #     jobs.append(p)
-        #     #병렬처리 개수 지정 20이면 20개 루프를 동시에 병렬로 처리
-        #     if len(jobs) % 8 == 0:
-        #         for p in jobs:
-        #             p.join()
-        #         print 'transition('+str(n)+') is in progress : {}'.format(datetime.now())
-        #         jobs=[]
-        # if len(jobs) > 0:
-        #     for p in jobs:
-        #         p.join()
+            # transition_sub1(c,k_tp.prices,c_t.mu)
+            p = Process(target=transition_sub1, args=(c,k_tp.prices,c_t.mu))
+            p.start()
+            jobs.append(p)
+            #병렬처리 개수 지정 20이면 20개 루프를 동시에 병렬로 처리
+            if len(jobs) % 4 == 0:
+                for p in jobs:
+                    p.join()
+                print 'transition('+str(c.y)+') is in progress : {}'.format(datetime.now())
+                jobs=[]
+        if len(jobs) > 0:
+            for p in jobs:
+                p.join()
+        print cohorts[0].R, cohorts[5].R, cohorts[10].R
+        print 'mu:',sum(cohorts[0].mu), sum(cohorts[5].mu), sum(cohorts[10].mu)
+        print 'mu:',cohorts[0].mu.shape,cohorts[5].mu.shape,cohorts[10].mu.shape
         k_tp.aggregate(cohorts)
         k_tp.update_all()
         k_tp.update_Bq()
         end_time = datetime.now()
         print 'transition('+str(n)+') is done : {}'.format(end_time)
         print 'transition ('+str(n)+') loop: {}'.format(end_time - start_time)
-        for t in range(0,180,30):
+        for t in range(0,10,5):
             print "r0=%2.3f" %(k_tp.r0[t]),"r1=%2.3f" %(k_tp.r1[t]),"L=%2.3f," %(k_tp.L[t]),\
                 "K0=%2.3f," %(k_tp.K0[t]),"K1=%2.3f," %(k_tp.K1[t]),"Bq1=%2.3f," %(k_tp.Bq1[t])
         if max(absolute(k_tp.K0 - k_tp.K1)) < k_tp.tol:
@@ -303,3 +283,8 @@ def transition(N=15,T=85,ng_i=1.012,ng_t=1.0):
             print 'Transition Path Not Converged! in', n+1,'iterations with', k_tp.tol
             break
     return k_tp, cohorts
+
+
+if __name__ == '__main__':
+    # initialize()
+    k, cs = transition()

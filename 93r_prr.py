@@ -35,7 +35,7 @@ class state:
         self.T = T = (W+R)
         self.TS = TS = (W+R)*TG
         ng0, ng1 = ng, ng + dng
-        sp = loadtxt('sp.txt', delimiter='\n')  # survival probability
+        sp = loadtxt('sp75.txt', delimiter='\n')  # survival probability
         m0 = array([prod(sp[:t+1])/ng0**t for t in range(T)], dtype=float)
         m1 = array([prod(sp[:t+1])/ng1**t for t in range(T)], dtype=float)
         self.sp = array([sp for t in range(TS)], dtype=float)
@@ -437,5 +437,5 @@ def tpath():
 
 
 if __name__ == '__main__':
-    findinitial()
+    # findinitial()
     transition()
