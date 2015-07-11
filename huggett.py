@@ -432,7 +432,6 @@ if __name__ == '__main__':
     c = cohort()
     N = 1
     #rgrid = linspace(0.0,0.2,6)
-
     for n in range(N):
         while (k.Bqdiff > 0.01):
             start_time1 = datetime.now()

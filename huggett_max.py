@@ -165,11 +165,8 @@ class cohort:
                     self.v[y,j,i] = v[i,self.a[y,j,i]]
                     self.c[y,j,i] = c[i,self.a[y,j,i]]
             self.ev[y] = self.pi.dot(self.v[y])
-
-
-    def calculate_mu(self):
         """ find distribution of agents w.r.t. age, productivity and asset """
-        # self.mu = self.mu*0
+        self.mu = self.mu*0
         self.mu[0,:,0] = self.muz[0]
         for y in range(1,self.mls):
             for j in range(self.zN):
@@ -192,14 +189,12 @@ def findsteadystate(ng=1.012,N=20):
     k = state(ng_init=ng)
     for n in range(N):
         c.optimalpolicy(k.prices)
-        c.calculate_mu()
         k.aggregate([c])
         while True:
             k.update_Bq()
             if max(absolute(k.Bq0 - k.Bq1)) < k.tol:
                 break
             c.optimalpolicy(k.prices)
-            c.calculate_mu()
             k.aggregate([c])
         k.update_all()
         print "n=%i" %(n+1),"r0=%2.3f" %(k.r0),"r1=%2.3f" %(k.r1),\
@@ -214,13 +209,13 @@ def findsteadystate(ng=1.012,N=20):
     print('Duration: {}'.format(end_time - start_time))
     return k, c
 
-
+# if __name__ == '__main__':
 def initialize(ng_i=1.012,ng_t=1.0):
     k_t, c_t = findsteadystate(ng=ng_t)
     k_i, c_i = findsteadystate(ng=ng_i)
     """Iteratively Calculate all generations optimal consumption and labour supply"""
-    with open('cc.pickle','wb') as f:
-        pickle.dump([c_i, c_t, k_i, k_t], f)
+    # with open('cc.pickle','wb') as f:
+    #     pickle.dump([c_i, c_t, k_i, k_t], f)
         # pickle.dump([k_t], f)
 
 
@@ -234,8 +229,6 @@ def transition_sub1(c,prices,mu_t):
         c.optimalpolicy(prices.T[:c.y+1].T)
     else:
         c.optimalpolicy(prices.T[-1].T)
-    c.R = 5
-    c.calculate_mu()
     # print sum(c.mu)
 
 
@@ -286,5 +279,6 @@ def transition(N=15, TP=20, ng_i=1.012, ng_t=1.0):
 
 
 if __name__ == '__main__':
-    # initialize()
+    initialize()
     k, cs = transition()
+    # print 'done'
