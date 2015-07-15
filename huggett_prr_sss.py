@@ -23,7 +23,7 @@ class state:
     an economy in which one or multiple generations live """
     def __init__(self, alpha=0.36, delta=0.06, tau=0.2378, theta=0.1, zeta=0.3,
         phi=0.5, tol=0.01, r_init=0.03, r_term=0.03, Bq_init=0, Bq_term=0,
-        aH=50.0, aL=0.0, aN=51,
+        aH=50.0, aL=0.0, aN=101,
         T=1, ng_init = 1.012, ng_term = 1.0-.012):
         # tr = 0.429, tw = 0.248, zeta=0.5, gy = 0.195, in Section 9.3. in Heer/Maussner
         """tr, tw and tb are tax rates on capital return, wage and tax for pension.
@@ -113,7 +113,7 @@ class cohort:
     """ This class is just a "struct" to hold the collection of primitives defining
     a generation """
     def __init__(self, beta=0.994, sigma=1.5, aH=50.0, aL=0.0, y=-1,
-        aN=51, tol=0.01, neg=-1e10, W=45, R=34, a0 = 0):
+        aN=101, tol=0.01, neg=-1e10, W=45, R=34, a0 = 0):
         self.beta, self.sigma = beta, sigma
         self.R, self.W, self.y = R, W, y
         # self.mls = mls = (y+1 if (y >= 0) and (y <= W+R-2) else W+R) # mls is maximum life span
