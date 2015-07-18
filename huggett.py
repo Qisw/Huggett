@@ -109,18 +109,13 @@ class state:
         T, mls, alpha, delta, zeta = self.T, self.mls, self.alpha, self.delta, self.zeta
         aa, pop, sp, zN, aN = self.aa, self.pop, self.sp, self.zN, self.aN
         spr = (1-sp)/sp
+        my = lambda x: x if x <= T-1 else -1
         mu = [array(vmu[t]).reshape(mls,zN,aN) for t in range(len(vmu))]
         """Aggregate all cohorts' capital and labor supply at each year"""
         for t in range(T):
-            if t <= T-mls-1:
-                self.K1[t] = sum([sum(mu[t+y][-(y+1)],0).dot(aa)*pop[t,-(y+1)]
+            self.K1[t] = sum([sum(mu[my(t+y)][-(y+1)],0).dot(aa)*pop[t,-(y+1)]
                                         for y in range(mls)])
-                self.Bq1[t] = sum([sum(mu[t+y][-(y+1)],0).dot(aa)*pop[t,-(y+1)]*spr[-(y+1)]
-                                        for y in range(mls)])*(1-zeta)/sum(pop[t])
-            else:
-                self.K1[t] = sum([sum(mu[-1][-(y+1)],0).dot(aa)*pop[t,-(y+1)]
-                                        for y in range(mls)])
-                self.Bq1[t] = sum([sum(mu[-1][-(y+1)],0).dot(aa)*pop[t,-(y+1)]*spr[-(y+1)]
+            self.Bq1[t] = sum([sum(mu[my(t+y)][-(y+1)],0).dot(aa)*pop[t,-(y+1)]*spr[-(y+1)]
                                         for y in range(mls)])*(1-zeta)/sum(pop[t])
         self.r1 = alpha*(self.K1/self.L)**(alpha-1.0)-delta
 
@@ -282,7 +277,7 @@ def transition(N=20, TP=320, ng_i=1.012, ng_t=1.0-0.012):
     k_tp = state(params_tp, r_init=k_i.r, r_term=k_t.r, Bq_init=k_i.Bq, Bq_term=k_t.Bq)
     mu_len = c_t.mls*c_t.zN*c_t.aN
     """Generate mu of TP cohorts who die in t = 0,...,T-1 with initial asset g0.apath[-t-1]"""
-    mu_tp = [RawArray(c_double, mu_len) for t in range(TP-c_t.mls)]
+    mu_tp = [RawArray(c_double, mu_len) for t in range(TP)]
     for n in range(N):
         start_time = datetime.now()
         print 'multiprocessing :'+str(n)+' is in progress : {} \n'.format(start_time)
@@ -301,13 +296,13 @@ def transition(N=20, TP=320, ng_i=1.012, ng_t=1.0-0.012):
         # if len(jobs) > 0:
             # for p in jobs:
                 # p.join()
-        while len(mu_tp) < TP:
-            mu_tp.append(c_t.vmu)
+        # while len(mu_tp) < TP:
+        #     mu_tp.append(c_t.vmu)
         k_tp.aggregate(mu_tp)
         k_tp.update_all()
         k_tp.update_Bq()
         # print 'transition('+str(n)+') is done : {}'.format(end_time)
-        for t in [0, 20, 50, 100, 200, 300]:
+        for t in [0, 100, 200, 300]:
             print "r=%2.3f" %(k_tp.r[t]),"r1=%2.3f" %(k_tp.r1[t]),"L=%2.3f," %(k_tp.L[t]),\
                 "K=%2.3f," %(k_tp.K[t]),"K1=%2.3f," %(k_tp.K1[t]),"Bq1=%2.3f," %(k_tp.Bq1[t])
         end_time = datetime.now()
@@ -321,8 +316,10 @@ def transition(N=20, TP=320, ng_i=1.012, ng_t=1.0-0.012):
     return k_tp, mu_tp
 
 
-# if __name__ == '__main__':
+if __name__ == '__main__':
     start_time = datetime.now()
     k, mu = transition()
     end_time = datetime.now()
     print 'Total Duration: {}'.format(end_time - start_time)
+    plt.plot(k.r)
+    plt.show()
