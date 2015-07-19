@@ -76,8 +76,10 @@ class state:
         """Construct containers for market prices, tax rates, pension, bequest"""
         self.theta = params.theta*ones(T)
         self.tau = params.tau*ones(T)
-        self.r = linspace(r_init,r_term,T)
-        self.Bq = linspace(Bq_init,Bq_term,T)
+        self.r = r_term*ones(T)
+        self.Bq = Bq_term*ones(T)
+        self.r[0:T-mls] = linspace(r_init,r_term,T-mls)
+        self.Bq[0:T-mls] = linspace(Bq_init,Bq_term,T-mls)
         self.pr, self.L, self.K, self.w, self.b = [zeros(T) for i in range(5)]
         for t in range(T):
             # pr = population of retired agents
@@ -87,15 +89,6 @@ class state:
             self.K[t] = ((self.r[t]+delta)/alpha)**(1.0/(alpha-1.0))*self.L[t]
             self.w[t] = ((self.r[t]+delta)/alpha)**(alpha/(alpha-1.0))*(1.0-alpha)
             self.b[t] = self.theta[t]*self.w[t]*self.L[t]/self.pr[t]
-        # self.pr = array([sum(self.pop[t,45:]) for t in range(T)], dtype=float)
-        # self.L = array([sum([muz[y].dot(ef[y])*self.pop[t,y] for y in range(mls)])
-        #                                         for t in range(T)], dtype=float)
-        # self.K = array([((self.r[t]+delta)/alpha)**(1.0/(alpha-1.0))*self.L[t]
-        #                                         for t in range(T)], dtype=float)
-        # self.w = array([((self.r[t]+delta)/alpha)**(alpha/(alpha-1.0))*(1.0-alpha)
-        #                                         for t in range(T)], dtype=float)
-        # self.b = array([self.theta[t]*self.w[t]*self.L[t]/self.pr[t]
-        #                                         for t in range(T)], dtype=float)
         self.r1 = zeros(T)
         self.K1 = zeros(T)
         self.Bq1 = zeros(T)
@@ -109,7 +102,7 @@ class state:
         T, mls, alpha, delta, zeta = self.T, self.mls, self.alpha, self.delta, self.zeta
         aa, pop, sp, zN, aN = self.aa, self.pop, self.sp, self.zN, self.aN
         spr = (1-sp)/sp
-        my = lambda x: x if x <= T-1 else -1
+        my = lambda x: x if x < T-1 else -1
         mu = [array(vmu[t]).reshape(mls,zN,aN) for t in range(len(vmu))]
         """Aggregate all cohorts' capital and labor supply at each year"""
         for t in range(T):
@@ -245,25 +238,13 @@ def findsteadystate(ng=1.012,N=40):
     return k, c
 
 
-# if __name__ == '__main__':
-# def initialize(ng_i=1.012,ng_t=1.0-0.012):
-#     k_t, c_t = findsteadystate(ng=ng_t)
-#     k_i, c_i = findsteadystate(ng=ng_i)
-#     """Iteratively Calculate all generations optimal consumption and labour supply"""
-    # with open('cc.pickle','wb') as f:
-    #     pickle.dump([c_i, c_t, k_i, k_t], f)
-        # pickle.dump([k_t], f)
-
-
 #병렬처리를 위한 for loop 내 로직 분리
 def transition_sub1(t,mu,prices,mu_t,params):
     c = cohort(params)
     T = params.T
     mls = params.mls
-    if (t >= mls-1) and (t <= T-(mls+1)):
-        c.optimalpolicy(prices.T[t-mls+1:t+1].T)
-    elif (t < mls-1):
-        c.optimalpolicy(prices.T[:t+1].T)
+    if t < T-1:
+        c.optimalpolicy(prices.T[max(t-mls+1,0):t+1].T)
     else:
         c.vmu = mu_t
     for i in range(c.mls*c.zN*c.aN):
@@ -296,13 +277,11 @@ def transition(N=20, TP=320, ng_i=1.012, ng_t=1.0-0.012):
         # if len(jobs) > 0:
             # for p in jobs:
                 # p.join()
-        # while len(mu_tp) < TP:
-        #     mu_tp.append(c_t.vmu)
         k_tp.aggregate(mu_tp)
         k_tp.update_all()
         k_tp.update_Bq()
         # print 'transition('+str(n)+') is done : {}'.format(end_time)
-        for t in [0, 100, 200, 300]:
+        for t in [0, int(TP/4), int(TP/2), int(3*TP/4), TP-1]:
             print "r=%2.3f" %(k_tp.r[t]),"r1=%2.3f" %(k_tp.r1[t]),"L=%2.3f," %(k_tp.L[t]),\
                 "K=%2.3f," %(k_tp.K[t]),"K1=%2.3f," %(k_tp.K1[t]),"Bq1=%2.3f," %(k_tp.Bq1[t])
         end_time = datetime.now()
