@@ -46,7 +46,6 @@ class params:
             self.pop[t,t+1:] = m0[t+1:]*ng_init**t
 
 
-
 class state:
     """ This class is just a "struct" to hold the collection of primitives defining
     an economy in which one or multiple generations live """
@@ -171,6 +170,7 @@ class cohort:
             prices = concatenate((tile(array([prices[:,0]]).T,(1,d)),prices), axis=1)
         [r, w, b, Bq, theta, tau] = prices
         ef, mls, aN, zN = self.ef, self.mls, self.aN, self.zN
+        util = lambda x: x**(1.0-self.sigma)/(1.0-self.sigma)
         # y = -1 : just before the agent dies
         for j in range(self.zN):
             c = self.aa*(1+(1-tau[-1])*r[-1]) \
@@ -199,10 +199,6 @@ class cohort:
             for j in range(zN):
                 for i in range(aN):
                     mu[y,:,self.a[y-1,j,i]] += mu[y-1,j,i]*self.pi[j]
-
-
-    def util(self, c): # period utility
-        return c**(1.0-self.sigma)/(1.0-self.sigma)
 
 
 """The following are procedures to get steady state of the economy using direct
