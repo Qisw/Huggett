@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Jan. 12, 2015, Hyun Chang Yi
-Computes the model of Section 9.3. in Heer/Maussner using 
+Computes the model of Section 9.3. in Heer/Maussner using
 direct method from Secion 9.1.
 
 HOUSEHOLD'S UTILITY FUNCTION IS DIFFERENT FROM THAT OF SECTION 9.1. AND 9.2.
@@ -39,7 +39,7 @@ class state:
         self.TS = TS = (W+R)*TG
         self.sp = sp = loadtxt('sp.txt', delimiter='\n')  # survival probability
         self.pop = array([prod(sp[:t+1]) for t in range(T)], dtype=float)
-        """Construct containers for market prices, tax rates, transfers, 
+        """Construct containers for market prices, tax rates, transfers,
         other aggregate variables"""
         self.Pt = Pt = sum(self.pop)
         self.Pr = Pr = sum([self.pop[y] for y in range(W,T)])
@@ -63,7 +63,7 @@ class state:
         self.D = 0
         self.C = 0
         self.DebtRatio = 0
-        
+
         self.K = K = k*L
         self.Beq = Beq = 0.21
         self.y = y = k**alpha
@@ -71,14 +71,14 @@ class state:
         self.w = w = (1-alpha)*k**alpha
         self.tb = tb = zeta*(1-tw)*Pr/(L+zeta*Pr)
         self.b = b #zeta*(1-tw-tb)*w
-        
+
         self.Tax = Tax = 11.0
         self.G = G = 6.72
         self.Tr = Tr
         self.qh = qh
         self.qr = qr
         # container for r, w, b, tr, tw, tb, Tr
-        self.p = array([self.r, self.w, self.b, self.tr, self.tw, 
+        self.p = array([self.r, self.w, self.b, self.tr, self.tw,
                             self.tb, self.Tr, self.qh, self.qr])
 
 
@@ -122,7 +122,7 @@ class state:
         self.Tr = (self.Tax+self.Beq-self.G)/self.Pt
         self.tb = self.zeta*(1-self.tw)*self.Pr/(self.L+self.zeta*self.Pr)
         self.b = self.zeta*(1-self.tw-self.tb)*self.w
-        self.p = array([self.r, self.w, self.b, self.tr, self.tw, self.tb, 
+        self.p = array([self.r, self.w, self.b, self.tr, self.tw, self.tb,
                         self.Tr, self.qh, self.qr])
 
 
@@ -135,7 +135,7 @@ class cohort:
         self.R, self.W, self.y = R, W, y
         self.tcost, self.ltv, self.dti = tcost, ltv, dti
         self.T = T = (y+1 if (y >= 0) and (y <= W+R-2) else W+R)
-        self.aH, self.aL, self.aN = aH, aL, aN 
+        self.aH, self.aL, self.aN = aH, aL, aN
         self.aa = (aL+aH)/2.0+(aH-aL)/2.0*linspace(-1,1,aN)
         self.tol, self.neg = tol, neg
         """ house sizes and number of feasible feasible house sizes """
@@ -174,7 +174,7 @@ class cohort:
 
 
     def valueNpolicy(self, p):
-        """ Given prices, transfers, benefits and tax rates over one's life-cycle, 
+        """ Given prices, transfers, benefits and tax rates over one's life-cycle,
         value and decision functions are calculated ***BACKWARD*** """
         [r, w, b, tr, tw, tb, Tr, qh, qr] = p
         T, aa, hh, aN, hN = self.T, self.aa, self.hh, self.aN, self.hN
@@ -237,16 +237,6 @@ class cohort:
                         for i in range(nonzero(self.ho[y,x0,h0]==0)[0][0]):
                             self.ho[y,x0,h0,i] = 0
                     self.vtilde[y][x0][h0] = interp1d(aa, self.v[y,x0,h0], kind='cubic')
-                    # ai = [self.aN/4, self.aN*2/4, self.aN-1]
-                    # if y % 15 == 0 and h0 == 0 and x0 == 0:
-                    #     print '------------'
-                    #     print 'y=',y,'inc=%2.2f'%(income),'h0=',h0
-                    #     for i in ai:
-                    #         print 'ltv=%2.2f'%(hh[self.ho[y,x0,h0,i]]*qh*self.ltv),'dti=%2.2f'%(income*self.dti),\
-                    #                 'a0=%2.2f'%(aa[i]),'h1=%2.0f'%(self.ho[y,x0,h0,i]),\
-                    #                 'a1=%2.2f'%(self.ao[y,x0,h0,self.ho[y,x0,h0,i],i]),\
-                    #                 'c0=%2.2f'%(self.co[y,x0,h0,self.ho[y,x0,h0,i],i]),\
-                    #                 'r0=%2.2f'%(self.ro[y,x0,h0,self.ho[y,x0,h0,i],i])
 
 
     def nextx(self, y, x0):
@@ -259,14 +249,14 @@ class cohort:
 
 
     def GetBracket(self, y, x0, h0, h1, l, m, p):
-        """ Find a bracket (a,b,c) such that policy function for next period asset level, 
+        """ Find a bracket (a,b,c) such that policy function for next period asset level,
         a[x;asset[l],y] lies in the interval (a,b) """
         aa = self.aa
         a, b, c = aa[0], 2*aa[0]-aa[1], 2*aa[0]-aa[2]
         minit = m
         m0 = m
         v0 = self.neg
-        """ The slow part of if slope != float("inf") is no doubt converting 
+        """ The slow part of if slope != float("inf") is no doubt converting
         the string to a float. """
         while (a > b) or (b > c):
             v1 = self.findv(y, x0, h0, h1, aa[l], aa[m], p)
@@ -282,8 +272,8 @@ class cohort:
 
 
     def findv(self, y, x0, h0, h1, a0, a1, p):
-        """ Return the value at the given generation and asset a0 and 
-        corresponding consumption and labor supply when the agent chooses his 
+        """ Return the value at the given generation and asset a0 and
+        corresponding consumption and labor supply when the agent chooses his
         next period asset a1, current period consumption c and labor n
         a1 is always within aL and aH """
         if y >= -(self.R):
@@ -344,7 +334,7 @@ class agent:
 
 
     def simulatelife(self, e, g, ainit=0, hinit=0, xinit=0):
-        """ Given prices, transfers, benefits and tax rates over one's life-cycle, 
+        """ Given prices, transfers, benefits and tax rates over one's life-cycle,
         value and decision functions are calculated ***BACKWARD*** """
         T, hh, aa = g.T, g.hh, g.aa
         """ find asset and labor supply profiles over life-cycle from value function"""
@@ -409,7 +399,7 @@ def agentpath(e, g, a):
     ax4.axis([0, 80, 0, 1.1])
     plt.show()
     # time.sleep(1)
-    # plt.close() # plt.close("all")    
+    # plt.close() # plt.close("all")
 
 def agepath(e, g):
     title = 'i=%2.2f'%(e.r*100) + 'ltv=' + str(g.ltv) + 'qh=' + str(e.qh) + 'qr=' + str(e.qr) \
@@ -448,7 +438,7 @@ def agepath(e, g):
     fig.savefig(fullpath)
     # plt.show()
     # time.sleep(1)
-    # plt.close() # plt.close("all")    
+    # plt.close() # plt.close("all")
 
 # def main1(psi=0.1, qh=1.050, qr=0.04145, ltv=0.4, dti=1.2, tcost=0.05):
 #     e = state(TG=1, k=4.2, ng=1, dng=0, W=45, R=30, Hs=60, qh=qh, qr=qr)
@@ -483,7 +473,7 @@ if __name__ == '__main__':
         else:
             qh = qh*(1+0.01*(e.H-35))
             qr = qr*(1+0.001*(e.R))
-    
+
 
 # def gridsearch():
 #     qhN = qrN = 5

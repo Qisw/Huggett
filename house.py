@@ -8,7 +8,7 @@ Economics, 38(3), 469-494.
 from scipy.interpolate import interp1d
 from scipy.optimize import fsolve, minimize_scalar
 from numpy import linspace, mean, array, zeros, absolute, loadtxt, dot, prod, \
-                    genfromtxt, sum, argmax, tile, concatenate, ones
+                    genfromtxt, sum, argmax, tile, concatenate, ones, log
 from matplotlib import pyplot as plt
 from datetime import datetime
 import time
@@ -22,7 +22,8 @@ class params:
     """ This class is just a "struct" to hold the collection of PARAMETER values """
     def __init__(self, T=1, alpha=0.36, delta=0.06, tau=0.2378, theta=0.1, zeta=0.3,
         beta=0.994, sigma=1.5, W=45, R=34, a0 = 0, ng_init=1.012, ng_term=1.0-0.012,
-        aH=50.0, aL=0.0, aN=50, phi=0.5, tol=1e-1, neg=-1e10):
+        aH=50.0, aL=0.0, aN=50, psi=0.1, phi=0.5, dti=0.5, ltv=0.7,
+        tol=1e-1, neg=-1e10):
         if T==1:
             ng_term = ng_init
         self.alpha, self.zeta, self.delta, self.tau = alpha, zeta, delta, tau
@@ -31,6 +32,8 @@ class params:
         self.R, self.W, self.T = R, W, T
         self.aH, self.aL, self.aN, self.aa = aH, aL, aN, aL+aH*linspace(0,1,aN)
         self.phi, self.tol, self.neg = phi, tol, neg
+        self.hh = linspace(0,4,5)   # hh = [0, 1, 2, 3, 4]
+        self.hN = hN = len(self.hh)
         """ LOAD PARAMETERS : SURVIVAL PROB., PRODUCTIVITY TRANSITION PROB. AND ... """
         self.sp = sp = loadtxt('sp.txt', delimiter='\n')  # survival probability
         self.muz = genfromtxt('muz.csv', delimiter=',')  # initial distribution of productivity
@@ -62,6 +65,8 @@ class state:
         self.phi, self.tol = params.phi, params.tol
         self.aN = aN = params.aN
         self.aa = aa = params.aa
+        self.hh = hh = params.hh
+        self.hN = hN = params.hN
         """ SURVIVAL PROB., PRODUCTIVITY TRANSITION PROB. AND ... """
         self.sp = sp = params.sp
         self.pi = pi = params.pi
@@ -133,11 +138,13 @@ class cohort:
     """ This class is just a "struct" to hold the collection of primitives defining
     a generation """
     def __init__(self, params, y=-1, a0 = 0):
-        self.beta, self.sigma = params.beta, params.sigma
+        self.beta, self.sigma, self.psi = params.beta, params.sigma, params.psi
         self.R, self.W, self.y = params.R, params.W, y
         # self.mls = mls = (y+1 if (y >= 0) and (y <= W+R-2) else W+R) # mls is maximum life span
         self.aN = aN = params.aN
         self.aa = aa = params.aa
+        self.hh = hh = params.hh
+        self.hN = hN = params.hN
         self.tol, self.neg = params.tol, params.neg
         """ SURVIVAL PROB., PRODUCTIVITY TRANSITION PROB. AND ... """
         self.sp = sp = params.sp
@@ -148,17 +155,18 @@ class cohort:
         self.zN = zN = params.zN
         self.mls = mls = params.mls
         """ container for value function and expected value function """
-        # v[y,j,i] is the value of an y-yrs-old agent with asset i and productity j
-        self.v = zeros(mls*zN*aN).reshape(mls,zN,aN)
-        # ev[y,j,ni] is the expected value when the agent's next period asset is ni
-        self.ev = zeros(mls*zN*aN).reshape(mls,zN,aN)
+        # v[y,j,h,i] is the value of an y-yrs-old agent with asset i and productity j, house h
+        self.v = zeros(mls*zN*hN*aN).reshape(mls,zN,hN,aN)
+        # ev[y,j,nh,ni] is the expected value when next period asset ni and house hi
+        self.ev = zeros(mls*zN*hN*aN).reshape(mls,zN,hN,aN)
         """ container for policy functions """
-        self.a = zeros(mls*zN*aN).reshape(mls,zN,aN)
-        self.c = zeros(mls*zN*aN).reshape(mls,zN,aN)
+        self.a = zeros(mls*zN*hN*aN).reshape(mls,zN,hN,aN)
+        self.h = zeros(mls*zN*hN*aN).reshape(mls,zN,hN,aN)
+        self.c = zeros(mls*zN*hN*aN).reshape(mls,zN,hN,aN)
         """ distribution of agents w.r.t. age, productivity and asset
         for each age, distribution over all productivities and assets add up to 1 """
         # self.mu = zeros(mls*zN*aN).reshape(mls,zN,aN)
-        self.vmu = zeros(mls*zN*aN)
+        self.vmu = zeros(mls*zN*hN*aN)
 
 
     def optimalpolicy(self, prices):
@@ -169,8 +177,9 @@ class cohort:
             d = self.mls - t
             prices = concatenate((tile(array([prices[:,0]]).T,(1,d)),prices), axis=1)
         [r, w, b, Bq, theta, tau] = prices
-        ef, mls, aN, zN = self.ef, self.mls, self.aN, self.zN
-        util = lambda x: x**(1.0-self.sigma)/(1.0-self.sigma)
+        ef, mls, aN, zN, hN = self.ef, self.mls, self.aN, self.zN, self.hN
+        sigma, theta, psi = self.sigma, self.theta, self.psi
+        util = lambda x, h: x**(1.0-sigma)/(1.0-sigma) + psi*log(h+1)
         # y = -1 : just before the agent dies
         for j in range(self.zN):
             c = self.aa*(1+(1-tau[-1])*r[-1]) \
