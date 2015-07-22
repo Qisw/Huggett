@@ -22,12 +22,13 @@ class params:
     """ This class is just a "struct" to hold the collection of PARAMETER values """
     def __init__(self, T=1, alpha=0.36, delta=0.06, tau=0.2378, theta=0.1, zeta=0.3,
         beta=0.994, sigma=1.5, W=45, R=34, a0 = 0, ng_init=1.012, ng_term=1.0-0.012,
-        aH=50.0, aL=0.0, aN=50, psi=0.1, phi=0.5, dti=0.5, ltv=0.7,
+        aH=50.0, aL=0.0, aN=50, psi=0.1, phi=0.5, dti=0.5, ltv=0.7, tcost=0.02,
         tol=1e-1, neg=-1e10):
         if T==1:
             ng_term = ng_init
         self.alpha, self.zeta, self.delta, self.tau = alpha, zeta, delta, tau
         self.theta = theta
+        self.tcost = tcost
         self.beta, self.sigma = beta, sigma
         self.R, self.W, self.T = R, W, T
         self.aH, self.aL, self.aN, self.aa = aH, aL, aN, aL+aH*linspace(0,1,aN)
@@ -146,6 +147,7 @@ class cohort:
         self.hh = hh = params.hh
         self.hN = hN = params.hN
         self.tol, self.neg = params.tol, params.neg
+        self.tcost = params.tcost
         """ SURVIVAL PROB., PRODUCTIVITY TRANSITION PROB. AND ... """
         self.sp = sp = params.sp
         self.pi = pi = params.pi
@@ -155,23 +157,23 @@ class cohort:
         self.zN = zN = params.zN
         self.mls = mls = params.mls
         """ container for value function and expected value function """
-        # v[y,j,h,i] is the value of an y-yrs-old agent with asset i and productity j, house h
-        self.v = zeros(mls*zN*hN*aN).reshape(mls,zN,hN,aN)
-        # ev[y,j,nh,ni] is the expected value when next period asset ni and house hi
-        self.ev = zeros(mls*zN*hN*aN).reshape(mls,zN,hN,aN)
+        # v[y,h,j,i] is the value of an y-yrs-old agent with asset i and productity j, house h
+        self.v = zeros(mls*zN*hN*aN).reshape(mls,hN,zN,aN)
+        # ev[y,nh,j,ni] is the expected value when next period asset ni and house hi
+        self.ev = zeros(mls*zN*hN*aN).reshape(mls,hN,zN,aN)
         """ container for policy functions """
-        self.a = zeros(mls*zN*hN*aN).reshape(mls,zN,hN,aN)
-        self.h = zeros(mls*zN*hN*aN).reshape(mls,zN,hN,aN)
-        self.c = zeros(mls*zN*hN*aN).reshape(mls,zN,hN,aN)
+        self.a = zeros(mls*zN*hN*aN).reshape(mls,hN,zN,aN)
+        self.h = zeros(mls*zN*hN*aN).reshape(mls,hN,zN,aN)
+        self.c = zeros(mls*zN*hN*aN).reshape(mls,hN,zN,aN)
         """ distribution of agents w.r.t. age, productivity and asset
         for each age, distribution over all productivities and assets add up to 1 """
-        # self.mu = zeros(mls*zN*aN).reshape(mls,zN,aN)
-        self.vmu = zeros(mls*zN*hN*aN)
+        self.vmu = zeros(mls*hN*zN*aN)
 
 
     def optimalpolicy(self, prices):
         """ Given prices, transfers, benefits and tax rates over one's life-cycle,
         value and decision functions are calculated ***BACKWARD*** """
+        aa, hh = self.aa, self.hh
         t = prices.shape[1]
         if t < self.mls:
             d = self.mls - t
@@ -179,27 +181,34 @@ class cohort:
         [r, w, b, Bq, theta, tau] = prices
         ef, mls, aN, zN, hN = self.ef, self.mls, self.aN, self.zN, self.hN
         sigma, theta, psi = self.sigma, self.theta, self.psi
-        util = lambda x, h: x**(1.0-sigma)/(1.0-sigma) + psi*log(h+1)
-        # y = -1 : just before the agent dies
-        for j in range(self.zN):
-            c = self.aa*(1+(1-tau[-1])*r[-1]) \
-                    + w[-1]*ef[-1,j]*(1-theta[-1]-tau[-1]) + b[-1] + Bq[-1]
-            c[c<=0.0] = 1e-10
-            self.c[-1,j] = c
-            self.v[-1,j] = util(c)
-        self.ev[-1] = self.pi.dot(self.v[-1])
-        # y = -2, -3,..., -60
-        for y in range(-2, -(mls+1), -1):
-            for j in range(zN):
-                c = tile(self.aa,(aN,1)).T*(1+(1-tau[y])*r[y]) + b[y]*(y>=-self.R) \
-                        + w[y]*ef[y,j]*(1-theta[y]-tau[y]) + Bq[y] - tile(self.aa,(aN,1))
+        pi, tcost = self.pi, self.tcost
+        """ inline functions: utility and income adjustment by trading house """
+        util = lambda c, h: log(x) + psi*log(h+1)
+        hinc = lambda h, nh, q: (h-nh)*q - tcost*h*q*(h!=nh)
+        """ y = -1 : just before the agent dies """
+        for h in range(hN):
+            for z in range(zN):
+                c = aa*(1+(1-tau[-1])*r[-1]) + hinc(hh[h],hh[0],q[-1])\
+                        + w[-1]*ef[-1,z]*(1-theta[-1]-tau[-1]) + b[-1] + Bq[-1]
                 c[c<=0.0] = 1e-10
-                v = util(c) + self.beta*self.sp[y+1]*tile(self.ev[y+1,j],(aN,1))
-                self.a[y,j] = argmax(v,1)
-                for i in range(aN):
-                    self.v[y,j,i] = v[i,self.a[y,j,i]]
-                    self.c[y,j,i] = c[i,self.a[y,j,i]]
-            self.ev[y] = self.pi.dot(self.v[y])
+                self.c[-1,h,z] = c
+                self.v[-1,h,z] = util(c)
+            self.ev[-1,h] = pi.dot(self.v[-1,h])
+        """ y = -2, -3,..., -60 """
+        for y in range(-2, -(mls+1), -1):
+            for h in range(hN):
+                for z in range(zN):
+                    vt = zeros(hN*aN*aN).reshape(hN,aN,aN)
+                    for nh in range(hN):
+                        c = tile(self.aa,(aN,1)).T*(1+(1-tau[y])*r[y]) + b[y]*(y>=-self.R) \
+                                + w[y]*ef[y,j]*(1-theta[y]-tau[y]) + Bq[y] + hinc(hh[h],hh[nh],q[y]) \
+                                - tile(self.aa,(aN,1))
+                        c[c<=0.0] = 1e-10
+                        vt[nh] = util(c) + self.beta*self.sp[y+1]*tile(self.ev[y+1,nh,j],(aN,1))
+                    for a in range(aN):
+                        self.h[y,h,z,a], self.a[y,h,z,a] = unravel_index(vt[:,a,:].argmax(),vt.shape)
+                        self.v[y,h,z,a] = vt[self.h[y,h,z,a],a,self.a[y,h,z,a]]
+                self.ev[y,h] = self.pi.dot(self.v[y,h])
         """ find distribution of agents w.r.t. age, productivity and asset """
         self.vmu = zeros(mls*zN*aN)
         mu = self.vmu.reshape(mls,zN,aN)
