@@ -6,7 +6,7 @@ Economics, 38(3), 469-494.
 """
 
 from scipy.interpolate import interp1d
-from scipy.optimize import fsolve, minimize_scalar
+from scipy.optimize import fsolve, minimize_scalar, broyden1, broyden2
 from numpy import linspace, mean, array, zeros, absolute, loadtxt, dot, prod, \
                     genfromtxt, sum, argmax, tile, concatenate, ones, log, unravel_index
 from matplotlib import pyplot as plt
@@ -20,7 +20,7 @@ from ctypes import Structure, c_double
 
 class params:
     """ This class is just a "struct" to hold the collection of PARAMETER values """
-    def __init__(self, T=1, alpha=0.36, delta=0.02, tau=0.2378, theta=0.1, zeta=0.3,
+    def __init__(self, T=1, alpha=0.36, delta=0.06, tau=0.2378, theta=0.1, zeta=0.3,
         beta=0.994, sigma=1.5, W=45, R=34, a0 = 0, ng_init=1.012, ng_term=1.0-0.012,
         aH=50.0, aL=0.0, aN=100, psi=0.1, phi=0.5, dti=0.5, ltv=0.7, tcost=0.02, Hs=70,
         tol=1e-1, eps=0.02, neg=-1e10):
@@ -33,7 +33,7 @@ class params:
         self.R, self.W, self.T = R, W, T
         self.aH, self.aL, self.aN, self.aa = aH, aL, aN, aL+aH*linspace(0,1,aN)
         self.phi, self.tol, self.neg, self.eps = phi, tol, neg, eps
-        self.hh = linspace(0,2,3)   # hh = [0, 1, 2, 3, 4]
+        self.hh = linspace(0,0.02,3)   # hh = [0, 1, 2, 3, 4]
         self.hN = hN = len(self.hh)
         self.Hs = Hs
         """ LOAD PARAMETERS : SURVIVAL PROB., PRODUCTIVITY TRANSITION PROB. AND ... """
@@ -82,6 +82,8 @@ class state:
         """ CALCULATE POPULATIONS OVER THE TRANSITION PATH """
         self.pop = params.pop
         """Construct containers for market prices, tax rates, pension, bequest"""
+        if T==1:
+            r_term, q_term, Bq_term = r_init, q_init, Bq_init
         self.theta = params.theta*ones(T)
         self.tau = params.tau*ones(T)
         self.r = r_term*ones(T)
@@ -296,6 +298,25 @@ def findsteadystate(ng=1.012,N=40):
     end_time = datetime.now()
     print('Duration: {}'.format(end_time - start_time))
     return k, c
+
+
+def F(rq):
+    params0 = params(T=1, psi=0.0, ng_init=1.012)
+    rq[0] = max(rq[0],0.001)
+    c = cohort(params0)
+    k = state(params0, r_init=rq[0], q_init=rq[1])
+    c.optimalpolicy(k.prices)
+    k.aggregate([c.vmu])
+    print rq, array([k.K-k.K1, k.Hs-k.Hd]),'\n'
+    return array([k.K-k.K1, k.Hs-k.Hd])
+
+def find1():
+    """Find Old and New Steady States with population growth rates ng and ng1"""
+    start_time = datetime.now()
+    res = broyden1(F, [0.06, 9.3], iter=10, maxiter=10, f_tol=0.1)
+    end_time = datetime.now()
+    print('Duration: {}'.format(end_time - start_time))
+    return res
 
 
 #병렬처리를 위한 for loop 내 로직 분리
