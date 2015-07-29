@@ -6,7 +6,7 @@ Economics, 38(3), 469-494.
 """
 
 from scipy.interpolate import interp1d
-from scipy.optimize import fsolve, minimize_scalar
+from scipy.optimize import fsolve, minimize_scalar, broyden1
 from numpy import linspace, mean, array, zeros, absolute, loadtxt, dot, prod, \
                     genfromtxt, sum, argmax, tile, concatenate, ones
 from matplotlib import pyplot as plt
@@ -73,6 +73,8 @@ class state:
         """ CALCULATE POPULATIONS OVER THE TRANSITION PATH """
         self.pop = params.pop
         """Construct containers for market prices, tax rates, pension, bequest"""
+        if T==1:
+            r_term, Bq_term = r_init, Bq_init
         self.theta = params.theta*ones(T)
         self.tau = params.tau*ones(T)
         self.r = r_term*ones(T)
@@ -103,12 +105,15 @@ class state:
         spr = (1-sp)/sp
         my = lambda x: x if x < T-1 else -1
         mu = [array(vmu[t]).reshape(mls,zN,aN) for t in range(len(vmu))]
+        self.K1 = zeros(T)
+        self.Bq1 = zeros(T)
         """Aggregate all cohorts' capital and labor supply at each year"""
         for t in range(T):
-            self.K1[t] = sum([sum(mu[my(t+y)][-(y+1)],0).dot(aa)*pop[t,-(y+1)]
-                                        for y in range(mls)])
-            self.Bq1[t] = sum([sum(mu[my(t+y)][-(y+1)],0).dot(aa)*pop[t,-(y+1)]*spr[-(y+1)]
-                                        for y in range(mls)])*(1-zeta)/sum(pop[t])
+            for y in range(mls):
+                k1 = sum(mu[my(t+y)][-(y+1)],0).dot(aa)*pop[t,-(y+1)]
+                bq1 = k1*spr[-(y+1)]*(1-zeta)/sum(pop[t])
+                self.K1[t] += k1
+                self.Bq1[t] += bq1
         self.r1 = alpha*(self.K1/self.L)**(alpha-1.0)-delta
 
 
@@ -291,7 +296,26 @@ def transition(N=20, TP=320, ng_i=1.012, ng_t=1.0-0.012):
     return k_tp, mu_tp
 
 
-if __name__ == '__main__':
+def F(r):
+    params0 = params(T=1, ng_init=1.012)
+    r = max(r,0.001)
+    c = cohort(params0)
+    k = state(params0, r_init=r)
+    c.optimalpolicy(k.prices)
+    k.aggregate([c.vmu])
+    print r, k.K-k.K1,'\n'
+    return k.K-k.K1
+
+def find1():
+    """Find Old and New Steady States with population growth rates ng and ng1"""
+    start_time = datetime.now()
+    res = broyden1(F, 0.05, iter=20, maxiter=20, f_tol=0.1)
+    end_time = datetime.now()
+    print('Duration: {}'.format(end_time - start_time))
+    return res
+
+
+# if __name__ == '__main__':
     start_time = datetime.now()
     k, mu = transition()
     end_time = datetime.now()

@@ -33,7 +33,7 @@ class params:
         self.R, self.W, self.T = R, W, T
         self.aH, self.aL, self.aN, self.aa = aH, aL, aN, aL+aH*linspace(0,1,aN)
         self.phi, self.tol, self.neg, self.eps = phi, tol, neg, eps
-        self.hh = linspace(0,0.02,3)   # hh = [0, 1, 2, 3, 4]
+        self.hh = linspace(0,0.2,3)   # hh = [0, 1, 2, 3, 4]
         self.hN = hN = len(self.hh)
         self.Hs = Hs
         """ LOAD PARAMETERS : SURVIVAL PROB., PRODUCTIVITY TRANSITION PROB. AND ... """
@@ -218,7 +218,7 @@ class cohort:
         # ev[y,nh,j,ni] is the expected value when next period asset ni and house hi
         ev = zeros((mls,hN,zN,aN))
         """ inline functions: utility and income adjustment by trading house """
-        util = lambda c, h: log(c) + psi*log(h+1)
+        util = lambda c, h: c**(1.0-self.sigma)/(1.0-self.sigma) + psi*log(h+1)
         hinc = lambda h, nh, q: (h-nh)*q - tcost*h*q*(h!=nh)
         """ y = -1 : just before the agent dies """
         for h in range(hN):
@@ -264,7 +264,7 @@ age-profile iteration and projection method"""
 def findsteadystate(ng=1.012,N=40):
     """Find Old and New Steady States with population growth rates ng and ng1"""
     start_time = datetime.now()
-    params0 = params(T=1,ng_init=ng)
+    params0 = params(T=1,ng_init=ng,psi=0.0)
     c = cohort(params0)
     k = state(params0)
     converged = lambda k: max(absolute(k.Bq - k.Bq1)) < k.tol \
@@ -285,7 +285,7 @@ def findsteadystate(ng=1.012,N=40):
         #             "Hd=%2.3f," %(k.Hd),"Bq1=%2.3f," %(k.Bq1)
         k.update_all()
         k.update_Bq()
-        k.update_q()
+        # k.update_q()
         print "n=%i" %(n+1),"r=%2.3f" %(k.r),"r1=%2.3f" %(k.r1),\
                 "K=%2.3f," %(k.K),"K1=%2.3f," %(k.K1),"q=%2.3f," %(k.q),\
                 "Hd=%2.3f," %(k.Hd),"Bq1=%2.3f," %(k.Bq1)
@@ -300,23 +300,23 @@ def findsteadystate(ng=1.012,N=40):
     return k, c
 
 
-def F(rq):
-    params0 = params(T=1, psi=0.0, ng_init=1.012)
-    rq[0] = max(rq[0],0.001)
-    c = cohort(params0)
-    k = state(params0, r_init=rq[0], q_init=rq[1])
-    c.optimalpolicy(k.prices)
-    k.aggregate([c.vmu])
-    print rq, array([k.K-k.K1, k.Hs-k.Hd]),'\n'
-    return array([k.K-k.K1, k.Hs-k.Hd])
-
-def find1():
-    """Find Old and New Steady States with population growth rates ng and ng1"""
-    start_time = datetime.now()
-    res = broyden1(F, [0.06, 9.3], iter=10, maxiter=10, f_tol=0.1)
-    end_time = datetime.now()
-    print('Duration: {}'.format(end_time - start_time))
-    return res
+# def F(rq):
+#     params0 = params(T=1, psi=0.0, ng_init=1.012)
+#     rq[0] = max(rq[0],0.001)
+#     c = cohort(params0)
+#     k = state(params0, r_init=rq[0], q_init=rq[1])
+#     c.optimalpolicy(k.prices)
+#     k.aggregate([c.vmu])
+#     print rq, array([k.K-k.K1, k.Hs-k.Hd]),'\n'
+#     return array([k.K-k.K1, k.Hs-k.Hd])
+#
+# def find1():
+#     """Find Old and New Steady States with population growth rates ng and ng1"""
+#     start_time = datetime.now()
+#     res = broyden1(F, [0.06, 9.3], iter=10, maxiter=10, f_tol=0.1)
+#     end_time = datetime.now()
+#     print('Duration: {}'.format(end_time - start_time))
+#     return res
 
 
 #병렬처리를 위한 for loop 내 로직 분리
