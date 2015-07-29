@@ -296,23 +296,23 @@ def transition(N=20, TP=320, ng_i=1.012, ng_t=1.0-0.012):
     return k_tp, mu_tp
 
 
-def F(r):
-    params0 = params(T=1, ng_init=1.012)
-    r = max(r,0.001)
-    c = cohort(params0)
-    k = state(params0, r_init=r)
-    c.optimalpolicy(k.prices)
-    k.aggregate([c.vmu])
-    print r, k.K-k.K1,'\n'
-    return k.K-k.K1
-
-def find1():
-    """Find Old and New Steady States with population growth rates ng and ng1"""
-    start_time = datetime.now()
-    res = broyden1(F, 0.05, iter=20, maxiter=20, f_tol=0.1)
-    end_time = datetime.now()
-    print('Duration: {}'.format(end_time - start_time))
-    return res
+# def F(r):
+#     params0 = params(T=1, ng_init=1.012)
+#     r = max(r,0.001)
+#     c = cohort(params0)
+#     k = state(params0, r_init=r)
+#     c.optimalpolicy(k.prices)
+#     k.aggregate([c.vmu])
+#     print r, k.K-k.K1,'\n'
+#     return k.K-k.K1
+#
+# def find1():
+#     """Find Old and New Steady States with population growth rates ng and ng1"""
+#     start_time = datetime.now()
+#     res = broyden1(F, 0.05, iter=20, maxiter=20, f_tol=0.1)
+#     end_time = datetime.now()
+#     print('Duration: {}'.format(end_time - start_time))
+#     return res
 
 
 # if __name__ == '__main__':

@@ -22,8 +22,8 @@ class params:
     """ This class is just a "struct" to hold the collection of PARAMETER values """
     def __init__(self, T=1, alpha=0.36, delta=0.06, tau=0.2378, theta=0.1, zeta=0.3,
         beta=0.994, sigma=1.5, W=45, R=34, a0 = 0, ng_init=1.012, ng_term=1.0-0.012,
-        aH=50.0, aL=0.0, aN=100, psi=0.1, phi=0.5, dti=0.5, ltv=0.7, tcost=0.02, Hs=70,
-        tol=1e-1, eps=0.02, neg=-1e10):
+        aH=50.0, aL=0.0, aN=100, psi=0.1, phi=0.5, dti=0.5, ltv=0.7, tcost=0.02, Hs=7,
+        tol=1e-2, eps=0.2, neg=-1e10):
         if T==1:
             ng_term = ng_init
         self.alpha, self.zeta, self.delta, self.tau = alpha, zeta, delta, tau
@@ -33,7 +33,7 @@ class params:
         self.R, self.W, self.T = R, W, T
         self.aH, self.aL, self.aN, self.aa = aH, aL, aN, aL+aH*linspace(0,1,aN)
         self.phi, self.tol, self.neg, self.eps = phi, tol, neg, eps
-        self.hh = linspace(0,0.2,3)   # hh = [0, 1, 2, 3, 4]
+        self.hh = linspace(0.1,0.9,5)   # hh = [0, 1, 2, 3, 4]
         self.hN = hN = len(self.hh)
         self.Hs = Hs
         """ LOAD PARAMETERS : SURVIVAL PROB., PRODUCTIVITY TRANSITION PROB. AND ... """
@@ -54,8 +54,8 @@ class params:
 class state:
     """ This class is just a "struct" to hold the collection of primitives defining
     an economy in which one or multiple generations live """
-    def __init__(self, params, r_init=0.03, r_term=0.03, Bq_init=0, Bq_term=0,
-        q_init=10.0, q_term=10.0):
+    def __init__(self, params, r_init=0.05, r_term=0.05, Bq_init=0, Bq_term=0,
+        q_init=3.3, q_term=3.3):
         # tr = 0.429, tw = 0.248, zeta=0.5, gy = 0.195, in Section 9.3. in Heer/Maussner
         """tr, tw and tb are tax rates on capital return, wage and tax for pension.
         tb is determined by replacement ratio, zeta, and other endogenous variables.
@@ -129,12 +129,6 @@ class state:
                 self.K1[t] += k1
                 self.Hd[t] += hd
                 self.Bq1[t] += bq1
-            # self.K1[t] = sum([sum(mu[my(t+y)][-(y+1)],(0,1)).dot(aa)*pop[t,-(y+1)]
-            #                             for y in range(mls)])
-            # self.Hd[t] = sum([sum(mu[my(t+y)][-(y+1)],(1,2)).dot(hh)*pop[t,-(y+1)]
-            #                             for y in range(mls)])
-            # self.Bq1[t] = sum([sum(mu[my(t+y)][-(y+1)],0).dot(aa)*pop[t,-(y+1)]*spr[-(y+1)]
-            #                             for y in range(mls)])*(1-zeta)/sum(pop[t])
         self.r1 = alpha*(self.K1/self.L)**(alpha-1.0)-delta
 
 
@@ -149,7 +143,7 @@ class state:
         self.prices[0] = self.r
         self.prices[1] = self.w
         self.prices[3] = self.b
-        array([self.r, self.w, self.q, self.b, self.Bq, self.theta, self.tau])
+        # array([self.r, self.w, self.q, self.b, self.Bq, self.theta, self.tau])
 
 
     def update_Bq(self):
@@ -166,8 +160,8 @@ class state:
 
     def converged(self):
         return max(absolute(self.Bq - self.Bq1)) < self.tol \
-                and max(absolute(self.Hd - self.Hs)) < self.tol \
-                and max(absolute(self.K - self.K1)) < self.tol
+                and max(absolute(self.K - self.K1)) < self.tol \
+                and max(absolute(self.Hd - self.Hs)) < self.tol
 
 
 class cohort:
@@ -218,7 +212,7 @@ class cohort:
         # ev[y,nh,j,ni] is the expected value when next period asset ni and house hi
         ev = zeros((mls,hN,zN,aN))
         """ inline functions: utility and income adjustment by trading house """
-        util = lambda c, h: c**(1.0-self.sigma)/(1.0-self.sigma) + psi*log(h+1)
+        util = lambda c, h: (c*h**psi)**(1-self.sigma)/(1-self.sigma)
         hinc = lambda h, nh, q: (h-nh)*q - tcost*h*q*(h!=nh)
         """ y = -1 : just before the agent dies """
         for h in range(hN):
@@ -264,7 +258,7 @@ age-profile iteration and projection method"""
 def findsteadystate(ng=1.012,N=40):
     """Find Old and New Steady States with population growth rates ng and ng1"""
     start_time = datetime.now()
-    params0 = params(T=1,ng_init=ng,psi=0.0)
+    params0 = params(T=1,ng_init=ng,psi=0.1)
     c = cohort(params0)
     k = state(params0)
     converged = lambda k: max(absolute(k.Bq - k.Bq1)) < k.tol \
@@ -285,7 +279,7 @@ def findsteadystate(ng=1.012,N=40):
         #             "Hd=%2.3f," %(k.Hd),"Bq1=%2.3f," %(k.Bq1)
         k.update_all()
         k.update_Bq()
-        # k.update_q()
+        k.update_q()
         print "n=%i" %(n+1),"r=%2.3f" %(k.r),"r1=%2.3f" %(k.r1),\
                 "K=%2.3f," %(k.K),"K1=%2.3f," %(k.K1),"q=%2.3f," %(k.q),\
                 "Hd=%2.3f," %(k.Hd),"Bq1=%2.3f," %(k.Bq1)
