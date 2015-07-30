@@ -24,7 +24,7 @@ class params:
     def __init__(self, T=1, alpha=0.36, delta=0.06, tau=0.2378, theta=0.1, zeta=0.3,
         beta=0.994, sigma=1.5, W=45, R=34, a0 = 0, ng_init=1.012, ng_term=1.0-0.012,
         aH=50.0, aL=0.0, aN=100, psi=0.1, phi=0.5, dti=0.5, ltv=0.7, tcost=0.02, Hs=7,
-        tol=1e-2, eps=0.2, neg=-1e10):
+        tol=1e-1, eps=0.2, neg=-1e10):
         if T==1:
             ng_term = ng_init
         self.alpha, self.zeta, self.delta, self.tau = alpha, zeta, delta, tau
@@ -269,8 +269,8 @@ def plot_mu(k,t=0):
         hp[y] = sum(mu[y],(1,2)).dot(hh)*pop[t,y]
         a[y] = sum(mu[y],(0,1)).dot(aa)
         h[y] = sum(mu[y],(1,2)).dot(hh)
-    title = 'psi=%2.2f'%(k.psi) + 'r=%2.2f'%(k.r[t]*100) + 'q=%2.2f'%(k.q[t]) + 'K=%2.2f'%(k.K[t]) \
-                + 'Hd=%2.2f'%(k.Hd[t]) + '.png'
+    title = 'psi=%2.2f'%(k.psi) + ' r=%2.2f'%(k.r[t]*100) + ' q=%2.2f'%(k.q[t]) \
+                + ' K=%2.2f'%(k.K[t]) + ' Hd=%2.2f'%(k.Hd[t]) + '.png'
     fig = plt.figure(facecolor='white')
     ax = fig.add_subplot(111)
     ax1 = fig.add_subplot(211)
@@ -290,7 +290,8 @@ def plot_mu(k,t=0):
     ax.set_title(title, y=1.08)
     ax1.set_title('Liquid Asset')
     ax2.set_title('House')
-    path = 'D:\Huggett\Figs'
+    # path = 'D:\Huggett\Figs'
+    path = '/Users/hyunchangyi/GitHub/Huggett/Figs'
     fullpath = os.path.join(path, title)
     fig.savefig(fullpath)
     # ax4.axis([0, 80, 0, 1.1])
