@@ -154,12 +154,12 @@ class cohort:
         self.mls = mls = params.mls
         """ container for value function and expected value function """
         # v[y,j,i] is the value of an y-yrs-old agent with asset i and productity j
-        self.v = zeros(mls*zN*aN).reshape(mls,zN,aN)
+        self.v = zeros((mls,zN,aN))
         # ev[y,j,ni] is the expected value when the agent's next period asset is ni
-        self.ev = zeros(mls*zN*aN).reshape(mls,zN,aN)
+        self.ev = zeros((mls,zN,aN))
         """ container for policy functions """
-        self.a = zeros(mls*zN*aN).reshape(mls,zN,aN)
-        self.c = zeros(mls*zN*aN).reshape(mls,zN,aN)
+        self.a = zeros((mls,zN,aN))
+        self.c = zeros((mls,zN,aN))
         """ distribution of agents w.r.t. age, productivity and asset
         for each age, distribution over all productivities and assets add up to 1 """
         # self.mu = zeros(mls*zN*aN).reshape(mls,zN,aN)
