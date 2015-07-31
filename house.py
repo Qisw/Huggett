@@ -9,7 +9,7 @@ from scipy.interpolate import interp1d
 from scipy.optimize import fsolve, minimize_scalar, broyden1, broyden2
 from numpy import linspace, mean, array, zeros, absolute, loadtxt, dot, prod, int,\
                     genfromtxt, sum, argmax, tile, concatenate, ones, log, \
-                    unravel_index, cumsum
+                    unravel_index, cumsum, meshgrid, atleast_2d
 from matplotlib import pyplot as plt
 from datetime import datetime
 import time
@@ -25,19 +25,19 @@ class params:
     """ This class is just a "struct" to hold the collection of PARAMETER values """
     def __init__(self, T=1, alpha=0.36, delta=0.06, tau=0.2378, theta=0.1, zeta=0.3,
         beta=0.994, sigma=1.5, W=45, R=34, a0 = 0, ng_init=1.012, ng_term=1.0-0.012,
-        aH=50.0, aL=0.0, aN=200, psi=0.1, phi=0.5, dti=0.5, ltv=0.7, tcost=0.02, Hs=7,
+        aH=50.0, aL=0.0, aN=200, hN=5, psi=0.1, phi=0.5, dti=0.5, ltv=0.7, tcost=0.02, Hs=7,
         tol=1e-2, eps=0.2, neg=-1e10):
         if T==1:
             ng_term = ng_init
         self.alpha, self.zeta, self.delta, self.tau = alpha, zeta, delta, tau
         self.theta, self.psi = theta, psi
-        self.tcost = tcost
+        self.tcost, self.dti, self.ltv = tcost, dti, ltv
         self.beta, self.sigma = beta, sigma
         self.R, self.W, self.T = R, W, T
         self.aH, self.aL, self.aN, self.aa = aH, aL, aN, aL+aH*linspace(0,1,aN)
         self.phi, self.tol, self.neg, self.eps = phi, tol, neg, eps
-        self.hh = linspace(0.1,0.9,5)   # hh = [0, 1, 2, 3, 4]
-        self.hN = hN = len(self.hh)
+        self.hh = linspace(0.1,1.0,hN)   # hh = [0, 1, 2, 3, 4]
+        self.hN = hN
         self.Hs = Hs
         """ LOAD PARAMETERS : SURVIVAL PROB., PRODUCTIVITY TRANSITION PROB. AND ... """
         self.sp = sp = loadtxt('parameters\sp.txt', delimiter='\n')  # survival probability
@@ -265,6 +265,7 @@ class cohort:
         self.hN = hN = params.hN
         self.tol, self.neg = params.tol, params.neg
         self.tcost = params.tcost
+        self.ltv = params.ltv
         """ SURVIVAL PROB., PRODUCTIVITY TRANSITION PROB. AND ... """
         self.sp = sp = params.sp
         self.pi = pi = params.pi
@@ -317,12 +318,17 @@ class cohort:
                 for z in range(zN):
                     vt = zeros((hN,aN,aN))
                     for nh in range(hN):
-                        c = tile(aa,(aN,1)).T*(1+(1-tau[y])*r[y]) + b[y]*(y>=-R) \
+                        p = aa*(1+(1-tau[y])*r[y]) + b[y]*(y>=-R) \
                                 + w[y]*ef[y,z]*(1-theta[y]-tau[y]) + Bq[y]  \
-                                + hinc(hh[h],hh[nh],q[y]) - tile(aa,(aN,1))
+                                + hinc(hh[h],hh[nh],q[y])
+                        pp, mm = atleast_2d(p, aa)
+                        c = pp.T - mm
                         c[c<=0.0] = 1e-10
                         vt[nh] = util(c,hh[h]) + beta*sp[y+1]*tile(ev[y+1,nh,z],(aN,1))
                     for a in range(aN):
+                        """penalize values given by infeasible pairs of house and asset"""
+                        vt[:,a,:] += self.neg*self.ffp(q[y])
+                        """find optimal pairs of house and asset """
                         self.h[y,h,z,a], self.a[y,h,z,a] \
                             = unravel_index(vt[:,a,:].argmax(),vt[:,a,:].shape)
                         self.v[y,h,z,a] = vt[self.h[y,h,z,a],a,self.a[y,h,z,a]]
@@ -331,7 +337,7 @@ class cohort:
         """ find distribution of agents w.r.t. age, productivity and asset """
         self.vmu = zeros(mls*hN*zN*aN)
         mu = self.vmu.reshape(mls,hN,zN,aN)
-        mu[0,0,:,0] = self.muz[0]
+        mu[0,0,:,20] = self.muz[0]
         for y in range(1,mls):
             for h in range(hN):
                 for z in range(zN):
@@ -339,14 +345,30 @@ class cohort:
                         mu[y,self.h[y-1,h,z,a],:,self.a[y-1,h,z,a]] += mu[y-1,h,z,a]*pi[z]
 
 
+    def ffp(self, q):
+        """find infeasible pairs of house size and liquid asset next period given q"""
+        hh, aa, ltv = self.hh, self.aa, self.ltv
+        h, a = atleast_2d(-ltv*q*hh, aa)
+        return h.T > a
+
+
 """The following are procedures to get steady state of the economy using direct
 age-profile iteration and projection method"""
 
 
-def fss(ng=1.012,N=40):
+def fss(ng=1.012,N=40,psi=0.1,delta=0.6,aN=100,aL=0,aH=50,Hs=70,hN=2,tol=0.1):
     """Find Old and New Steady States with population growth rates ng and ng1"""
     start_time = datetime.now()
-    params0 = params(T=1,ng_init=ng,psi=0.1)
+    params0 = params(T=1,ng_init=ng,psi=psi,delta=delta,aN=aN,aL=aL,aH=aH,Hs=Hs,hN=hN,tol=tol)
+    print '\n======== Parameters ========'
+    print 'aN  : %i'%(params0.aN)
+    print 'aL  : %i'%(params0.aL)
+    print 'aH  : %i'%(params0.aH)
+    print 'hN  : %i'%(params0.hN)
+    print 'Hs  : %i'%(params0.Hs)
+    print 'psi : %2.2f'%(params0.psi)
+    print 'tol : %2.2f'%(params0.tol)
+    print '============================== \n'
     c = cohort(params0)
     k = state(params0)
     converged = lambda k: max(absolute(k.Bq - k.Bq1)) < k.tol \
@@ -368,7 +390,7 @@ def fss(ng=1.012,N=40):
         k.update_all()
         k.update_Bq()
         k.update_q()
-        print "n=%i" %(n+1),"r=%2.2f%%" %(k.r*100),"r1=%2.3f%%" %(k.r1*100),\
+        print "n=%2i" %(n+1),"r=%2.2f%%" %(k.r*100),"r1=%2.2f%%" %(k.r1*100),\
                 "K=%2.3f," %(k.K),"K1=%2.3f," %(k.K1),"q=%2.3f," %(k.q),\
                 "Hd=%2.3f," %(k.Hd),"Bq1=%2.3f," %(k.Bq1)
         if k.converged():
