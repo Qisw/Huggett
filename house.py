@@ -8,7 +8,8 @@ Economics, 38(3), 469-494.
 from scipy.interpolate import interp1d
 from scipy.optimize import fsolve, minimize_scalar, broyden1, broyden2
 from numpy import linspace, mean, array, zeros, absolute, loadtxt, dot, prod, int,\
-                    genfromtxt, sum, argmax, tile, concatenate, ones, log, unravel_index
+                    genfromtxt, sum, argmax, tile, concatenate, ones, log, \
+                    unravel_index, cumsum
 from matplotlib import pyplot as plt
 from datetime import datetime
 import time
@@ -24,8 +25,8 @@ class params:
     """ This class is just a "struct" to hold the collection of PARAMETER values """
     def __init__(self, T=1, alpha=0.36, delta=0.06, tau=0.2378, theta=0.1, zeta=0.3,
         beta=0.994, sigma=1.5, W=45, R=34, a0 = 0, ng_init=1.012, ng_term=1.0-0.012,
-        aH=50.0, aL=0.0, aN=100, psi=0.1, phi=0.5, dti=0.5, ltv=0.7, tcost=0.02, Hs=7,
-        tol=1e-1, eps=0.2, neg=-1e10):
+        aH=50.0, aL=0.0, aN=200, psi=0.1, phi=0.5, dti=0.5, ltv=0.7, tcost=0.02, Hs=7,
+        tol=1e-2, eps=0.2, neg=-1e10):
         if T==1:
             ng_term = ng_init
         self.alpha, self.zeta, self.delta, self.tau = alpha, zeta, delta, tau
@@ -168,61 +169,79 @@ class state:
                 and max(absolute(self.Hd - self.Hs)) < self.tol
 
 
-    def plot(self, t=0, ny=10):
+    def plot(self, t=0, yi=0, yt=78, ny=10):
         """plot life-path of aggregate capital accumulation and house demand"""
         mls = self.mls
-        aa, pop, hh = self.aa, self.pop, self.hh
+        pop, aa, hh, aN, hN = self.pop, self.aa, self.hh, self.aN, self.hN
         mu = self.mu[t]
         a = zeros(mls)
         h = zeros(mls)
         ap = zeros(mls)
         hp = zeros(mls)
+        al = zeros(aN)
+        hl = zeros(hN)
         """Aggregate all cohorts' capital and labor supply at each year"""
         for y in range(mls):
             ap[y] = sum(mu[y],(0,1)).dot(aa)*pop[t,y]
             hp[y] = sum(mu[y],(1,2)).dot(hh)*pop[t,y]
             a[y] = sum(mu[y],(0,1)).dot(aa)
             h[y] = sum(mu[y],(1,2)).dot(hh)
-        title = 'psi:%2.2f'%(self.psi) + \
-                ' r:%2.2f%%'%(self.r[t]*100) + ' q:%2.2f'%(self.q[t]) + \
-                ' K:%2.1f'%(self.K[t]) + ' Hd:%2.1f'%(self.Hd[t])
+            al += sum(mu[y],(0,1))*pop[t,y]
+            hl += sum(mu[y],(1,2))*pop[t,y]
+        title = 'psi=%2.2f'%(self.psi) + \
+                ' r=%2.2f%%'%(self.r[t]*100) + ' q=%2.2f'%(self.q[t]) + \
+                ' K=%2.1f'%(self.K[t]) + ' Hd=%2.1f'%(self.Hd[t])
         filename = title + '.png'
         fig = plt.figure(facecolor='white')
+        plt.rcParams.update({'font.size': 8})
+        # matplotlib.rcParams.update({'font.size': 22})
         ax = fig.add_subplot(111)
-        ax1 = fig.add_subplot(221)
-        ax2 = fig.add_subplot(222)
-        ax3 = fig.add_subplot(223)
-        ax4 = fig.add_subplot(224)
+        ax1 = fig.add_subplot(231)
+        ax2 = fig.add_subplot(234)
+        ax3 = fig.add_subplot(232)
+        ax4 = fig.add_subplot(235)
+        ax5 = fig.add_subplot(233)
+        ax6 = fig.add_subplot(236)
         fig.subplots_adjust(hspace=.5, wspace=.3, left=None, right=None, top=None, bottom=None)
         ax.spines['top'].set_color('none')
         ax.spines['bottom'].set_color('none')
         ax.spines['left'].set_color('none')
         ax.spines['right'].set_color('none')
         ax.tick_params(labelcolor='w', top='off', bottom='off', left='off', right='off')
-        ax1.plot(range(mls),ap,label='w/ pop. adj.')
-        ax1.plot(range(mls),a,label='w/o pop. adj.')
-        ax2.plot(range(mls),hp,label='w/ pop. adj.')
-        ax2.plot(range(mls),h,label='w/o pop. adj.')
-        for y in linspace(0,mls-1,ny).astype(int):
+        ax1.plot(range(mls),ap,label='aggregate')
+        ax1.plot(range(mls),a,label='per capita')
+        ax2.plot(range(mls),hp,label='aggregate')
+        ax2.plot(range(mls),h,label='per capita')
+        for y in linspace(yi,yt,ny).astype(int):
             ax3.plot(aa,sum(mu[y],(0,1)),label='age %i'%(y))
-        for y in linspace(0,mls-1,ny).astype(int):
+        for y in linspace(yi,yt,ny).astype(int):
             ax4.plot(hh,sum(mu[y],(1,2)),label='age %i'%(y))
+        ax5.plot(cumsum(al)/sum(al),cumsum(aa*al)/sum(aa*al),".")
+        ax6.plot(cumsum(hl)/sum(hl),cumsum(hh*hl)/sum(hh*hl),".")
         # ax1.legend(bbox_to_anchor=(0.9,1.0),loc='center',prop={'size':8})
         ax1.legend(prop={'size':7})
         ax2.legend(prop={'size':7})
         ax3.legend(prop={'size':7})
         ax4.legend(prop={'size':7})
         ax3.axis([0, 15, 0, 0.1])
+        ax5.axis([0, 1, 0, 1])
+        ax6.axis([0, 1, 0, 1])
         # ax4.axis([0, 80, 0, 1.0])
         ax1.set_xlabel('Age')
         ax2.set_xlabel('Age')
         ax3.set_xlabel('Asset Size')
         ax4.set_xlabel('House Size')
+        ax5.set_xlabel('Cum. Share of Agents from Lower to Higher')
+        ax6.set_xlabel('Cum. Share of Agents from Lower to Higher')
+        ax5.set_ylabel('Cum. Share of Asset Occupied')
+        ax6.set_ylabel('Cum. Share of House Occupied')
         ax.set_title(title, y=1.08)
-        ax1.set_title('Liquid Assets over Ages')
-        ax2.set_title('House Sizes over Ages')
-        ax3.set_title('Liquid Assets Dist. w/i Cohorts')
-        ax4.set_title('House Sizes Dist. w/i Cohorts')
+        ax1.set_title('Life-Cycle Liquid Asset Accumulation')
+        ax2.set_title('Life-Cycle House Size')
+        ax3.set_title('Dist. of Liquid Asset w/i Cohort')
+        ax4.set_title('Dist. of House Size w/i Cohort')
+        ax5.set_title('Lorenz Curve for Liquid Asset')
+        ax6.set_title('Lorenz Curve for House')
         if system() == 'Windows':
             path = 'D:\Huggett\Figs'
         else:
@@ -349,7 +368,7 @@ def fss(ng=1.012,N=40):
         k.update_all()
         k.update_Bq()
         k.update_q()
-        print "n=%i" %(n+1),"r=%2.3f" %(k.r),"r1=%2.3f" %(k.r1),\
+        print "n=%i" %(n+1),"r=%2.2f%%" %(k.r*100),"r1=%2.3f%%" %(k.r1*100),\
                 "K=%2.3f," %(k.K),"K1=%2.3f," %(k.K1),"q=%2.3f," %(k.q),\
                 "Hd=%2.3f," %(k.Hd),"Bq1=%2.3f," %(k.Bq1)
         if k.converged():
