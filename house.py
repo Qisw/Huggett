@@ -26,7 +26,7 @@ class params:
     def __init__(self, T=1, alpha=0.36, delta=0.08, tau=0.2378, theta=0.1, zeta=0.3,
         beta=0.994, sigma=1.5, W=45, R=34, a0 = 0, ng_init=1.012, ng_term=1.0-0.012,
         aH=50.0, aL=0.0, aN=200, hN=5, psi=0.1, phi=0.5, dti=0.5, ltv=0.7, tcost=0.02, Hs=7,
-        tol=1e-2, eps=0.2, neg=-1e10):
+        tol=1e-2, eps=0.2, neg=-1e10, gs=1.5):
         if T==1:
             ng_term = ng_init
         self.alpha, self.zeta, self.delta, self.tau = alpha, zeta, delta, tau
@@ -34,7 +34,13 @@ class params:
         self.tcost, self.dti, self.ltv = tcost, dti, ltv
         self.beta, self.sigma = beta, sigma
         self.R, self.W, self.T = R, W, T
-        self.aH, self.aL, self.aN, self.aa = aH, aL, aN, aL+aH*linspace(0,1,aN)
+        self.aH, self.aL = aH, aL
+        amN = int(aN*aH/(aH-aL))
+        am = [-aH*linspace(0,1,aN)**gs][0][amN:0:-1]
+        ap = aH*linspace(0,1,aN)**gs
+        self.aa = concatenate((am,ap))
+        self.aN = len(self.aa)
+        # self.aa = aL+aH*linspace(0,1,aN)
         self.phi, self.tol, self.neg, self.eps = phi, tol, neg, eps
         self.hh = linspace(0.1,1.0,hN)   # hh = [0, 1, 2, 3, 4]
         self.hN = hN
@@ -58,6 +64,18 @@ class params:
         self.pop = array([m1*ng_term**t for t in range(T)], dtype=float)
         for t in range(min(T,self.mls-1)):
             self.pop[t,t+1:] = m0[t+1:]*ng_init**t
+
+
+    def print_params(self):
+        print '\n======== Parameters ========'
+        print 'aN  : %i'%(self.aN)
+        print 'aL  : %i'%(self.aL)
+        print 'aH  : %i'%(self.aH)
+        print 'hN  : %i'%(self.hN)
+        print 'Hs  : %i'%(self.Hs)
+        print 'psi : %2.2f'%(self.psi)
+        print 'tol : %2.2f'%(self.tol)
+        print '============================== \n'
 
 
 class state:
@@ -364,21 +382,13 @@ age-profile iteration and projection method"""
 
 def fss(ng=1.012, N=10, psi=0.1, delta=0.08, aN=200, aL=-20, aH=50, Hs=7, hN=5, tol=0.01,\
         alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3, phi=0.75, eps=0.075,
-        beta=0.994, sigma=1.5, dti=0.5, ltv=0.7, tcost=0.02):
+        beta=0.994, sigma=1.5, dti=0.5, ltv=0.7, tcost=0.02, gs=2.0):
     """Find Old and New Steady States with population growth rates ng and ng1"""
     start_time = datetime.now()
     params0 = params(T=1,ng_init=ng,psi=psi,delta=delta,aN=aN,aL=aL,aH=aH,Hs=Hs,\
                     hN=hN,tol=tol,eps=eps,alpha=alpha,beta=beta,sigma=sigma,phi=phi,\
-                    dti=dti,ltv=ltv,tcost=tcost)
-    print '\n======== Parameters ========'
-    print 'aN  : %i'%(params0.aN)
-    print 'aL  : %i'%(params0.aL)
-    print 'aH  : %i'%(params0.aH)
-    print 'hN  : %i'%(params0.hN)
-    print 'Hs  : %i'%(params0.Hs)
-    print 'psi : %2.2f'%(params0.psi)
-    print 'tol : %2.2f'%(params0.tol)
-    print '============================== \n'
+                    dti=dti,ltv=ltv,tcost=tcost, gs=gs)
+    params0.print_params()
     c = cohort(params0)
     k = state(params0)
     converged = lambda k: max(absolute(k.Bq - k.Bq1)) < k.tol \
