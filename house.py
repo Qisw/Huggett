@@ -9,7 +9,7 @@ from scipy.interpolate import interp1d
 from scipy.optimize import fsolve, minimize_scalar, broyden1, broyden2
 from numpy import linspace, mean, array, zeros, absolute, loadtxt, dot, prod, int,\
                     genfromtxt, sum, argmax, tile, concatenate, ones, log, \
-                    unravel_index, cumsum, meshgrid, atleast_2d
+                    unravel_index, cumsum, meshgrid, atleast_2d, where
 from matplotlib import pyplot as plt
 from datetime import datetime
 import time
@@ -23,7 +23,7 @@ from ctypes import Structure, c_double
 
 class params:
     """ This class is just a "struct" to hold the collection of PARAMETER values """
-    def __init__(self, T=1, alpha=0.36, delta=0.06, tau=0.2378, theta=0.1, zeta=0.3,
+    def __init__(self, T=1, alpha=0.36, delta=0.08, tau=0.2378, theta=0.1, zeta=0.3,
         beta=0.994, sigma=1.5, W=45, R=34, a0 = 0, ng_init=1.012, ng_term=1.0-0.012,
         aH=50.0, aL=0.0, aN=200, hN=5, psi=0.1, phi=0.5, dti=0.5, ltv=0.7, tcost=0.02, Hs=7,
         tol=1e-2, eps=0.2, neg=-1e10):
@@ -40,10 +40,16 @@ class params:
         self.hN = hN
         self.Hs = Hs
         """ LOAD PARAMETERS : SURVIVAL PROB., PRODUCTIVITY TRANSITION PROB. AND ... """
-        self.sp = sp = loadtxt('parameters\sp.txt', delimiter='\n')  # survival probability
-        self.muz = genfromtxt('parameters\muz.csv', delimiter=',')  # initial distribution of productivity
-        self.pi = genfromtxt('parameters\pi.csv', delimiter=',')  # productivity transition probability
-        self.ef = genfromtxt('parameters\ef.csv', delimiter=',')
+        if system() == 'Windows':
+            self.sp = sp = loadtxt('parameters\sp.txt', delimiter='\n')  # survival probability
+            self.muz = genfromtxt('parameters\muz.csv', delimiter=',')  # initial distribution of productivity
+            self.pi = genfromtxt('parameters\pi.csv', delimiter=',')  # productivity transition probability
+            self.ef = genfromtxt('parameters\ef.csv', delimiter=',')
+        else:
+            self.sp = sp = loadtxt('parameters/sp.txt', delimiter='\n')  # survival probability
+            self.muz = genfromtxt('parameters/muz.csv', delimiter=',')  # initial distribution of productivity
+            self.pi = genfromtxt('parameters/pi.csv', delimiter=',')  # productivity transition probability
+            self.ef = genfromtxt('parameters/ef.csv', delimiter=',')
         self.zN = self.pi.shape[0]
         self.mls = self.ef.shape[0]
         """ CALCULATE POPULATIONS OVER THE TRANSITION PATH """
@@ -164,9 +170,8 @@ class state:
 
 
     def converged(self):
-        return max(absolute(self.Bq - self.Bq1)) < self.tol \
-                and max(absolute(self.K - self.K1)) < self.tol \
-                and max(absolute(self.Hd - self.Hs)) < self.tol
+        return max(absolute(self.K - self.K1))/max(self.K) < self.tol \
+                and max(absolute(self.Hd - self.Hs))/max(self.Hd) < self.tol
 
 
     def plot(self, t=0, yi=0, yt=78, ny=10):
@@ -188,7 +193,7 @@ class state:
             h[y] = sum(mu[y],(1,2)).dot(hh)
             al += sum(mu[y],(0,1))*pop[t,y]
             hl += sum(mu[y],(1,2))*pop[t,y]
-        title = 'psi=%2.2f'%(self.psi) + \
+        title = 'psi=%2.2f'%(self.psi) + ' aN=%2.2f'%(self.aN) +' hN=%2.2f'%(self.hN) +\
                 ' r=%2.2f%%'%(self.r[t]*100) + ' q=%2.2f'%(self.q[t]) + \
                 ' K=%2.1f'%(self.K[t]) + ' Hd=%2.1f'%(self.Hd[t])
         filename = title + '.png'
@@ -223,7 +228,7 @@ class state:
         ax2.legend(prop={'size':7})
         ax3.legend(prop={'size':7})
         ax4.legend(prop={'size':7})
-        ax3.axis([0, 15, 0, 0.1])
+        # ax3.axis([0, 15, 0, 0.1])
         ax5.axis([0, 1, 0, 1])
         ax6.axis([0, 1, 0, 1])
         # ax4.axis([0, 80, 0, 1.0])
@@ -261,6 +266,7 @@ class cohort:
         # self.mls = mls = (y+1 if (y >= 0) and (y <= W+R-2) else W+R) # mls is maximum life span
         self.aN = aN = params.aN
         self.aa = aa = params.aa
+        self.a0_id = where(aa >= 0)[0][0]   # agents start their life with asset aa[a0_id]
         self.hh = hh = params.hh
         self.hN = hN = params.hN
         self.tol, self.neg = params.tol, params.neg
@@ -337,7 +343,7 @@ class cohort:
         """ find distribution of agents w.r.t. age, productivity and asset """
         self.vmu = zeros(mls*hN*zN*aN)
         mu = self.vmu.reshape(mls,hN,zN,aN)
-        mu[0,0,:,20] = self.muz[0]
+        mu[0,0,:,self.a0_id] = self.muz[0]
         for y in range(1,mls):
             for h in range(hN):
                 for z in range(zN):
@@ -356,10 +362,14 @@ class cohort:
 age-profile iteration and projection method"""
 
 
-def fss(ng=1.012,N=40,psi=0.1,delta=0.6,aN=100,aL=0,aH=50,Hs=70,hN=2,tol=0.1):
+def fss(ng=1.012, N=10, psi=0.1, delta=0.08, aN=200, aL=-20, aH=50, Hs=7, hN=5, tol=0.01,\
+        alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3, phi=0.75, eps=0.075,
+        beta=0.994, sigma=1.5, dti=0.5, ltv=0.7, tcost=0.02):
     """Find Old and New Steady States with population growth rates ng and ng1"""
     start_time = datetime.now()
-    params0 = params(T=1,ng_init=ng,psi=psi,delta=delta,aN=aN,aL=aL,aH=aH,Hs=Hs,hN=hN,tol=tol)
+    params0 = params(T=1,ng_init=ng,psi=psi,delta=delta,aN=aN,aL=aL,aH=aH,Hs=Hs,\
+                    hN=hN,tol=tol,eps=eps,alpha=alpha,beta=beta,sigma=sigma,phi=phi,\
+                    dti=dti,ltv=ltv,tcost=tcost)
     print '\n======== Parameters ========'
     print 'aN  : %i'%(params0.aN)
     print 'aL  : %i'%(params0.aL)
@@ -402,25 +412,6 @@ def fss(ng=1.012,N=40,psi=0.1,delta=0.6,aN=100,aL=0,aH=50,Hs=70,hN=2,tol=0.1):
     end_time = datetime.now()
     print('Duration: {}'.format(end_time - start_time))
     return k, c
-
-
-# def F(rq):
-#     params0 = params(T=1, psi=0.0, ng_init=1.012)
-#     rq[0] = max(rq[0],0.001)
-#     c = cohort(params0)
-#     k = state(params0, r_init=rq[0], q_init=rq[1])
-#     c.optimalpolicy(k.prices)
-#     k.aggregate([c.vmu])
-#     print rq, array([k.K-k.K1, k.Hs-k.Hd]),'\n'
-#     return array([k.K-k.K1, k.Hs-k.Hd])
-#
-# def find1():
-#     """Find Old and New Steady States with population growth rates ng and ng1"""
-#     start_time = datetime.now()
-#     res = broyden1(F, [0.06, 9.3], iter=10, maxiter=10, f_tol=0.1)
-#     end_time = datetime.now()
-#     print('Duration: {}'.format(end_time - start_time))
-#     return res
 
 
 #병렬처리를 위한 for loop 내 로직 분리

@@ -67,7 +67,7 @@ def plot(k, t=0, yi=0, yt=78, ny=10):
     ax2.legend(prop={'size':7})
     ax3.legend(prop={'size':7})
     ax4.legend(prop={'size':7})
-    ax3.axis([0, 15, 0, 0.1])
+    # ax3.axis([0, 15, 0, 0.1])
     ax5.axis([0, 1, 0, 1])
     ax6.axis([0, 1, 0, 1])
     # ax4.axis([0, 80, 0, 1.0])
