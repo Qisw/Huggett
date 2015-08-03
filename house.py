@@ -35,8 +35,7 @@ class params:
         self.beta, self.sigma = beta, sigma
         self.R, self.W, self.T = R, W, T
         self.aH, self.aL = aH, aL
-        amN = int(aN*aH/(aH-aL))
-        am = [-aH*linspace(0,1,aN)**gs][0][amN:0:-1]
+        am = [-aH*linspace(0,1,aN)**gs][0][int(-aN*aL/(aH-aL)):0:-1]
         ap = aH*linspace(0,1,aN)**gs
         self.aa = concatenate((am,ap))
         self.aN = len(self.aa)
@@ -44,7 +43,6 @@ class params:
         self.phi, self.tol, self.neg, self.eps = phi, tol, neg, eps
         self.hh = linspace(0.1,1.0,hN)   # hh = [0, 1, 2, 3, 4]
         self.hN = hN
-        self.Hs = Hs
         """ LOAD PARAMETERS : SURVIVAL PROB., PRODUCTIVITY TRANSITION PROB. AND ... """
         if system() == 'Windows':
             self.sp = sp = loadtxt('parameters\sp.txt', delimiter='\n')  # survival probability
@@ -64,18 +62,29 @@ class params:
         self.pop = array([m1*ng_term**t for t in range(T)], dtype=float)
         for t in range(min(T,self.mls-1)):
             self.pop[t,t+1:] = m0[t+1:]*ng_init**t
+        """ House Supply OVER THE TRANSITION PATH """
+        self.Hs = Hs*ones(T)
 
 
     def print_params(self):
-        print '\n======== Parameters ========'
-        print 'aN  : %i'%(self.aN)
-        print 'aL  : %i'%(self.aL)
-        print 'aH  : %i'%(self.aH)
-        print 'hN  : %i'%(self.hN)
-        print 'Hs  : %i'%(self.Hs)
-        print 'psi : %2.2f'%(self.psi)
-        print 'tol : %2.2f'%(self.tol)
-        print '============================== \n'
+        print '\n===================== Parameters ====================='
+        if self.T==1:
+            print 'Finding Steady State ...'
+        else:
+            print 'Finding Transition Path over %i periods ...'%(self.T)
+        print 'Liquid Asset: [%i'%(self.aL),', %i]'%(self.aH),' with Grid Size %i'%(self.aN)
+        print '       House: [%2.2f'%(self.hh[0]),', %2.2f]'%(self.hh[-1]),' with Grid Size %i'%(self.hN)
+        if self.T==1:
+            print 'House Supply: %2.2f'%(self.Hs[0])
+        else:
+            print 'House Supply: from %2.2f'%(self.Hs[0]), 'to %2.2f'%(self.Hs[-1]),' over the Transition Path'
+        if self.T>1:
+            print 'Populations : from %3.2f'%(self.pop[0]), 'to %3.2f'%(self.pop[-1])
+        print 'psi:%2.2f'%(self.psi), ' tol:%2.2f'%(self.tol), ' eps:%2.2f'%(self.eps)\
+                , ' phi:%2.2f'%(self.phi), ' tcost:%2.2f'%(self.tcost), '\n'\
+                , ' delta:%2.2f'%(self.delta), ' alpha:%2.2f'%(self.alpha)\
+                , ' dti:%2.2f'%(self.dti), ' ltv:%2.2f'%(self.ltv), ' beta:%2.2f'%(self.beta)
+        print '====================================================== \n'
 
 
 class state:
@@ -380,13 +389,13 @@ class cohort:
 age-profile iteration and projection method"""
 
 
-def fss(ng=1.012, N=10, psi=0.1, delta=0.08, aN=200, aL=-20, aH=50, Hs=7, hN=5, tol=0.01,\
+def fss(ng=1.012, N=20, psi=0.1, delta=0.08, aN=200, aL=-10, aH=40, Hs=7, hN=5, tol=0.01,
         alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3, phi=0.75, eps=0.075,
         beta=0.994, sigma=1.5, dti=0.5, ltv=0.7, tcost=0.02, gs=2.0):
     """Find Old and New Steady States with population growth rates ng and ng1"""
     start_time = datetime.now()
-    params0 = params(T=1,ng_init=ng,psi=psi,delta=delta,aN=aN,aL=aL,aH=aH,Hs=Hs,\
-                    hN=hN,tol=tol,eps=eps,alpha=alpha,beta=beta,sigma=sigma,phi=phi,\
+    params0 = params(T=1,ng_init=ng,psi=psi,delta=delta,aN=aN,aL=aL,aH=aH,Hs=Hs,
+                    hN=hN,tol=tol,eps=eps,alpha=alpha,beta=beta,sigma=sigma,phi=phi,
                     dti=dti,ltv=ltv,tcost=tcost, gs=gs)
     params0.print_params()
     c = cohort(params0)
@@ -437,10 +446,21 @@ def transition_sub1(t,mu,prices,mu_t,params):
         mu[i] = c.vmu[i]
 
 
-def tran(N=20, TP=320, ng_i=1.012, ng_t=1.0-0.012):
-    k_i, c_i = fss(ng=ng_i)
-    k_t, c_t = fss(ng=ng_t)
-    params_tp = params(T=TP, ng_init=ng_i, ng_term=ng_t)
+def tran(N=20, TP=200, ng_i=1.012, ng_t=1.0, psi=0.2, delta=0.08,
+        aN=30, aL=-10, aH=40, Hs=7, hN=10, tol=0.01,
+        alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3, phi=0.75, eps=0.075,
+        beta=0.994, sigma=1.5, dti=0.5, ltv=0.7, tcost=0.02, gs=2.0):
+    k_i, c_i = fss(ng=ng_i,psi=psi,delta=delta,aN=aN,aL=aL,aH=aH,Hs=Hs,
+                    hN=hN,tol=tol,eps=eps,alpha=alpha,beta=beta,sigma=sigma,phi=phi,
+                    dti=dti,ltv=ltv,tcost=tcost, gs=gs)
+    k_t, c_t = fss(ng=ng_t,psi=psi,delta=delta,aN=aN,aL=aL,aH=aH,Hs=Hs,
+                    hN=hN,tol=tol,eps=eps,alpha=alpha,beta=beta,sigma=sigma,phi=phi,
+                    dti=dti,ltv=ltv,tcost=tcost, gs=gs)
+    params_tp = params(T=TP, ng_init=ng_i, ng_term=ng_t,psi=psi,delta=delta,
+                    aN=aN,aL=aL,aH=aH,Hs=Hs,
+                    hN=hN,tol=tol,eps=eps,alpha=alpha,beta=beta,sigma=sigma,phi=phi,
+                    dti=dti,ltv=ltv,tcost=tcost, gs=gs)
+    params_tp.print_params()
     k_tp = state(params_tp, r_init=k_i.r, r_term=k_t.r, Bq_init=k_i.Bq, Bq_term=k_t.Bq)
     mu_len = c_t.mls*c_t.zN*c_t.aN
     """Generate mu of TP cohorts who die in t = 0,...,T-1 with initial asset g0.apath[-t-1]"""
@@ -469,9 +489,9 @@ def tran(N=20, TP=320, ng_i=1.012, ng_t=1.0-0.012):
         k_tp.update_q()
         # print 'transition('+str(n)+') is done : {}'.format(end_time)
         for t in [0, int(TP/4), int(TP/2), int(3*TP/4), TP-1]:
-            print "r=%2.3f" %(k_tp.r[t]),"r1=%2.3f" %(k_tp.r1[t]),"L=%2.3f," %(k_tp.L[t]),\
-                "K=%2.3f," %(k_tp.K[t]),"K1=%2.3f," %(k_tp.K1[t]),"Bq1=%2.3f," %(k_tp.Bq1[t]),\
-                "q=%2.3f," %(k_tp.q[t]),"Hd=%2.3f," %(k_tp.Hd[t])
+            print "r=%2.2f%%" %(k_tp.r[t]*100),"r1=%2.2f%%" %(k_tp.r1[t]*100),"L=%2.2f," %(k_tp.L[t]),\
+                "K=%2.2f," %(k_tp.K[t]),"K1=%2.2f," %(k_tp.K1[t]),"Bq1=%2.3f," %(k_tp.Bq1[t]),\
+                "q=%2.2f," %(k_tp.q[t]),"Hd=%2.2f," %(k_tp.Hd[t])
         end_time = datetime.now()
         print 'transition ('+str(n)+') loop: {}'.format(end_time - start_time)
         if k.converged:
@@ -483,7 +503,7 @@ def tran(N=20, TP=320, ng_i=1.012, ng_t=1.0-0.012):
     return k_tp, mu_tp
 
 
-# if __name__ == '__main__':
+if __name__ == '__main__':
     start_time = datetime.now()
     k, mu = tran()
     end_time = datetime.now()
