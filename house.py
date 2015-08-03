@@ -69,9 +69,9 @@ class params:
     def print_params(self):
         print '\n===================== Parameters ====================='
         if self.T==1:
-            print 'Finding Steady State ...'
+            print 'Finding Steady State ... \n'
         else:
-            print 'Finding Transition Path over %i periods ...'%(self.T)
+            print 'Finding Transition Path over %i periods ... \n'%(self.T)
         print 'Liquid Asset: [%i'%(self.aL),', %i]'%(self.aH),' with Grid Size %i'%(self.aN)
         print '       House: [%2.2f'%(self.hh[0]),', %2.2f]'%(self.hh[-1]),' with Grid Size %i'%(self.hN)
         if self.T==1:
@@ -79,11 +79,11 @@ class params:
         else:
             print 'House Supply: from %2.2f'%(self.Hs[0]), 'to %2.2f'%(self.Hs[-1]),' over the Transition Path'
         if self.T>1:
-            print 'Populations : from %3.2f'%(self.pop[0]), 'to %3.2f'%(self.pop[-1])
-        print 'psi:%2.2f'%(self.psi), ' tol:%2.2f'%(self.tol), ' eps:%2.2f'%(self.eps)\
+            print 'Populations : from %3.2f'%(sum(self.pop[0])), 'to %3.2f'%(sum(self.pop[-1]))
+        print '\n','psi  :%2.2f'%(self.psi), ' tol  :%2.2f'%(self.tol), ' eps:%2.2f'%(self.eps)\
                 , ' phi:%2.2f'%(self.phi), ' tcost:%2.2f'%(self.tcost), '\n'\
-                , ' delta:%2.2f'%(self.delta), ' alpha:%2.2f'%(self.alpha)\
-                , ' dti:%2.2f'%(self.dti), ' ltv:%2.2f'%(self.ltv), ' beta:%2.2f'%(self.beta)
+             ,'delta:%2.2f'%(self.delta), ' alpha:%2.2f'%(self.alpha)\
+                , ' dti:%2.2f'%(self.dti), ' ltv:%2.2f'%(self.ltv), ' beta :%2.2f'%(self.beta)
         print '====================================================== \n'
 
 
@@ -170,7 +170,7 @@ class state:
         self.r1 = alpha*(self.K1/self.L)**(alpha-1.0)-delta
 
 
-    def update_all(self):
+    def update_prices(self):
         """ Update market prices, w and r, and many others according to new
         aggregate capital and labor paths for years 0,...,T from last iteration """
         alpha, delta = self.alpha, self.delta
@@ -181,6 +181,10 @@ class state:
         self.prices[0] = self.r
         self.prices[1] = self.w
         self.prices[3] = self.b
+        self.Bq = self.phi*self.Bq + (1-self.phi)*self.Bq1
+        self.prices[4] = self.Bq
+        self.q = self.q*(1+self.eps*(self.Hd-self.Hs))
+        self.prices[2] = self.q
         # array([self.r, self.w, self.q, self.b, self.Bq, self.theta, self.tau])
 
 
@@ -199,6 +203,12 @@ class state:
     def converged(self):
         return max(absolute(self.K - self.K1))/max(self.K) < self.tol \
                 and max(absolute(self.Hd - self.Hs))/max(self.Hd) < self.tol
+
+
+    def print_prices(self, n=0, t=0):
+        print "n=%2i"%(n)," t=%3i"%(t),"r=%2.2f%%"%(self.r[t]*100),"Pop.=%3.1f"%(sum(self.pop[t])),\
+              "Ks=%3.1f,"%(self.K1[t]),"q=%2.1f,"%(self.q[t]),"Hd=%3.1f,"%(self.Hd[t]),\
+              "Bq=%2.2f," %(self.Bq1[t])
 
 
     def plot(self, t=0, yi=0, yt=78, ny=10):
@@ -394,9 +404,9 @@ def fss(ng=1.012, N=20, psi=0.1, delta=0.08, aN=200, aL=-10, aH=40, Hs=7, hN=5, 
         beta=0.994, sigma=1.5, dti=0.5, ltv=0.7, tcost=0.02, gs=2.0):
     """Find Old and New Steady States with population growth rates ng and ng1"""
     start_time = datetime.now()
-    params0 = params(T=1,ng_init=ng,psi=psi,delta=delta,aN=aN,aL=aL,aH=aH,Hs=Hs,
-                    hN=hN,tol=tol,eps=eps,alpha=alpha,beta=beta,sigma=sigma,phi=phi,
-                    dti=dti,ltv=ltv,tcost=tcost, gs=gs)
+    params0 = params(T=1, ng_init=ng, psi=psi, delta=delta, aN=aN, aL=aL, aH=aH, Hs=Hs,
+                    hN=hN, tol=tol, eps=eps, alpha=alpha, beta=beta, sigma=sigma, phi=phi,
+                    dti=dti, ltv=ltv, tcost=tcost, gs=gs)
     params0.print_params()
     c = cohort(params0)
     k = state(params0)
@@ -416,12 +426,8 @@ def fss(ng=1.012, N=20, psi=0.1, delta=0.08, aN=200, aL=-10, aH=40, Hs=7, hN=5, 
         #     print "n=%i" %(n+1),"r=%2.3f" %(k.r),"r1=%2.3f" %(k.r1),\
         #             "K=%2.3f," %(k.K),"K1=%2.3f," %(k.K1),"q=%2.3f," %(k.q),\
         #             "Hd=%2.3f," %(k.Hd),"Bq1=%2.3f," %(k.Bq1)
-        k.update_all()
-        k.update_Bq()
-        k.update_q()
-        print "n=%2i" %(n+1),"r=%2.2f%%" %(k.r*100),"r1=%2.2f%%" %(k.r1*100),\
-                "K=%2.3f," %(k.K),"K1=%2.3f," %(k.K1),"q=%2.3f," %(k.q),\
-                "Hd=%2.3f," %(k.Hd),"Bq1=%2.3f," %(k.Bq1)
+        k.print_prices(n=n+1)
+        k.update_prices()
         if k.converged():
             print 'Economy Converged to SS! in',n+1,'iterations with', k.tol
             break
@@ -442,32 +448,32 @@ def transition_sub1(t,mu,prices,mu_t,params):
         c.optimalpolicy(prices.T[max(t-mls+1,0):t+1].T)
     else:
         c.vmu = mu_t
-    for i in range(c.mls*c.zN*c.aN):
+    for i in range(c.mls*c.hN*c.zN*c.aN):
         mu[i] = c.vmu[i]
 
 
 def tran(N=20, TP=200, ng_i=1.012, ng_t=1.0, psi=0.2, delta=0.08,
-        aN=30, aL=-10, aH=40, Hs=7, hN=10, tol=0.01,
+        aN=50, aL=-10, aH=40, Hs=7, hN=3, tol=0.01,
         alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3, phi=0.75, eps=0.075,
         beta=0.994, sigma=1.5, dti=0.5, ltv=0.7, tcost=0.02, gs=2.0):
-    k_i, c_i = fss(ng=ng_i,psi=psi,delta=delta,aN=aN,aL=aL,aH=aH,Hs=Hs,
-                    hN=hN,tol=tol,eps=eps,alpha=alpha,beta=beta,sigma=sigma,phi=phi,
-                    dti=dti,ltv=ltv,tcost=tcost, gs=gs)
-    k_t, c_t = fss(ng=ng_t,psi=psi,delta=delta,aN=aN,aL=aL,aH=aH,Hs=Hs,
-                    hN=hN,tol=tol,eps=eps,alpha=alpha,beta=beta,sigma=sigma,phi=phi,
-                    dti=dti,ltv=ltv,tcost=tcost, gs=gs)
-    params_tp = params(T=TP, ng_init=ng_i, ng_term=ng_t,psi=psi,delta=delta,
-                    aN=aN,aL=aL,aH=aH,Hs=Hs,
-                    hN=hN,tol=tol,eps=eps,alpha=alpha,beta=beta,sigma=sigma,phi=phi,
-                    dti=dti,ltv=ltv,tcost=tcost, gs=gs)
+    k_i, c_i = fss(ng=ng_i, psi=psi, delta=delta, aN=aN, aL=aL, aH=aH, Hs=Hs,
+                    hN=hN, tol=tol, eps=eps, alpha=alpha, beta=beta, sigma=sigma, phi=phi,
+                    dti=dti, ltv=ltv, tcost=tcost, gs=gs)
+    k_t, c_t = fss(ng=ng_t, psi=psi, delta=delta, aN=aN, aL=aL, aH=aH, Hs=Hs,
+                    hN=hN, tol=tol, eps=eps, alpha=alpha, beta=beta, sigma=sigma, phi=phi,
+                    dti=dti, ltv=ltv, tcost=tcost, gs=gs)
+    params_tp = params(T=TP, ng_init=ng_i, ng_term=ng_t,
+                    psi=psi, delta=delta, aN=aN, aL=aL, aH=aH, Hs=Hs,
+                    hN=hN, tol=tol, eps=eps, alpha=alpha, beta=beta, sigma=sigma, phi=phi,
+                    dti=dti, ltv=ltv, tcost=tcost, gs=gs)
     params_tp.print_params()
     k_tp = state(params_tp, r_init=k_i.r, r_term=k_t.r, Bq_init=k_i.Bq, Bq_term=k_t.Bq)
-    mu_len = c_t.mls*c_t.zN*c_t.aN
+    mu_len = c_t.mls*c_t.hN*c_t.zN*c_t.aN
     """Generate mu of TP cohorts who die in t = 0,...,T-1 with initial asset g0.apath[-t-1]"""
     mu_tp = [RawArray(c_double, mu_len) for t in range(TP)]
     for n in range(N):
         start_time = datetime.now()
-        print 'multiprocessing :'+str(n)+' is in progress : {} \n'.format(start_time)
+        print '\n','multiprocessing :'+str(n)+' is in progress : {} \n'.format(start_time)
         jobs = []
         for t, mu in enumerate(mu_tp):
             # transition_sub1(c,k_tp.prices,c_t.mu)
@@ -484,21 +490,16 @@ def tran(N=20, TP=200, ng_i=1.012, ng_t=1.0, psi=0.2, delta=0.08,
             # for p in jobs:
                 # p.join()
         k_tp.aggregate(mu_tp)
-        k_tp.update_all()
-        k_tp.update_Bq()
-        k_tp.update_q()
-        # print 'transition('+str(n)+') is done : {}'.format(end_time)
         for t in [0, int(TP/4), int(TP/2), int(3*TP/4), TP-1]:
-            print "r=%2.2f%%" %(k_tp.r[t]*100),"r1=%2.2f%%" %(k_tp.r1[t]*100),"L=%2.2f," %(k_tp.L[t]),\
-                "K=%2.2f," %(k_tp.K[t]),"K1=%2.2f," %(k_tp.K1[t]),"Bq1=%2.3f," %(k_tp.Bq1[t]),\
-                "q=%2.2f," %(k_tp.q[t]),"Hd=%2.2f," %(k_tp.Hd[t])
+            k_tp.print_prices(n=n+1,t=t)
+        k_tp.update_prices()
         end_time = datetime.now()
         print 'transition ('+str(n)+') loop: {}'.format(end_time - start_time)
-        if k.converged:
-            print 'Transition Path Converged! in', n+1,'iterations with', k_tp.tol
+        if k_tp.converged():
+            print 'Transition Path Converged! in', n+1,'iterations.'
             break
         if n >= N-1:
-            print 'Transition Path Not Converged! in', n+1,'iterations with', k_tp.tol
+            print 'Transition Path Not Converged! in', n+1,'iterations.'
             break
     return k_tp, mu_tp
 
