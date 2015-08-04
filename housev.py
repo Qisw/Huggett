@@ -10,7 +10,7 @@ from scipy.optimize import fsolve, minimize_scalar, broyden1, broyden2
 from numpy import linspace, mean, array, zeros, absolute, loadtxt, dot, prod, int,\
                     genfromtxt, sum, argmax, tile, concatenate, ones, log, \
                     unravel_index, cumsum, meshgrid, atleast_2d, where, newaxis,\
-                    maximum
+                    maximum, transpose
 from matplotlib import pyplot as plt
 from datetime import datetime
 import time
@@ -358,22 +358,23 @@ class cohort:
                 self.v[-1,h,z] = util(c,hh[h])
             ev[-1,h] = pi.dot(self.v[-1,h])
         """ y = -2, -3,..., -60 """
+        NH = hh[newaxis,:,newaxis,newaxis]
+        NA = aa[newaxis,newaxis,newaxis,:]
+        CA = aa[newaxis,newaxis,:,newaxis]
         for y in range(-2, -(mls+1), -1):
+            EF = ef[y][:,newaxis,newaxis,newaxis]
+            LTV = neg*(-ltv*NH*q[y] > NA)
             for h in range(hN):
+                c = w[y]*EF*(1-theta[y]-tau[y]) + hinc(hh[h],NH,q[y]) \
+                    + (CA*(1+(1-tau[y])*r[y]) + b[y]*(y>=-R) + Bq[y]) - NA
+                c[c<=0.0] = 1e-10
+                vt = util(c,hh[h]) + beta*sp[y+1]*transpose(ev[y+1],(1,0,2))[:,:,newaxis,:] + LTV
                 for z in range(zN):
-                    vt = zeros((hN,aN,aN))
-                    for nh in range(hN):
-                        p = aa*(1+(1-tau[y])*r[y]) + b[y]*(y>=-R) \
-                                + w[y]*ef[y,z]*(1-theta[y]-tau[y]) + Bq[y]  \
-                                + hinc(hh[h],hh[nh],q[y])
-                        c = p[:,newaxis] - aa
-                        c[c<=0.0] = 1e-10
-                        vt[nh] = util(c,hh[h]) + beta*sp[y+1]*ev[y+1,nh,z] + neg*(-ltv*hh[nh]*q[y]>aa)
                     for a in range(aN):
-                        """find optimal pairs of house and asset """
+                        """ find optimal pairs of house and asset """
                         self.h[y,h,z,a], self.a[y,h,z,a] \
-                            = unravel_index(vt[:,a,:].argmax(),vt[:,a,:].shape)
-                        self.v[y,h,z,a] = vt[self.h[y,h,z,a],a,self.a[y,h,z,a]]
+                            = unravel_index(vt[z,:,a,:].argmax(),vt[z,:,a,:].shape)
+                        self.v[y,h,z,a] = vt[z,self.h[y,h,z,a],a,self.a[y,h,z,a]]
                         # print 'optimal nh and na:', y,h,self.h[y,h,z,a], self.a[y,h,z,a]
                 ev[y,h] = pi.dot(self.v[y,h])
         """ find distribution of agents w.r.t. age, productivity and asset """
@@ -391,7 +392,7 @@ class cohort:
 age-profile iteration and projection method"""
 
 
-def fss(ng=1.012, N=10, psi=0.2, delta=0.08, aN=50, aL=-10, aH=40, Hs=10, hN=3, tol=0.01,
+def fss(ng=1.012, N=5, psi=0.2, delta=0.08, aN=30, aL=-10, aH=40, Hs=10, hN=3, tol=0.01,
         alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3, phi=0.75, eps=0.075,
         beta=0.994, sigma=1.5, dti=0.5, ltv=0.7, tcost=0.02, gs=2.0):
     """Find Old and New Steady States with population growth rates ng and ng1"""
