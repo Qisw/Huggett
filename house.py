@@ -7,6 +7,8 @@ Economics, 38(3), 469-494.
 
 from scipy.interpolate import interp1d
 from scipy.optimize import fsolve, minimize_scalar, broyden1, broyden2
+from scipy.fftpack import rfft, rfftfreq, irfft
+from scipy.signal import savgol_filter
 from numpy import linspace, mean, array, zeros, absolute, loadtxt, dot, prod, int,\
                     genfromtxt, sum, argmax, tile, concatenate, ones, log, \
                     unravel_index, cumsum, meshgrid, atleast_2d, where, newaxis,\
@@ -86,6 +88,33 @@ class params:
              ,'delta:%2.2f'%(self.delta), ' alpha:%2.2f'%(self.alpha)\
                 , ' dti:%2.2f'%(self.dti), ' ltv:%2.2f'%(self.ltv), ' beta :%2.2f'%(self.beta)
         print '====================================================== \n'
+
+
+def savitzky_golay(y, window_size, order, deriv=0, rate=1):
+
+    import numpy as np
+    from math import factorial
+
+    try:
+        window_size = np.abs(np.int(window_size))
+        order = np.abs(np.int(order))
+    except ValueError, msg:
+        raise ValueError("window_size and order have to be of type int")
+    if window_size % 2 != 1 or window_size < 1:
+        raise TypeError("window_size size must be a positive odd number")
+    if window_size < order + 2:
+        raise TypeError("window_size is too small for the polynomials order")
+    order_range = range(order+1)
+    half_window = (window_size -1) // 2
+    # precompute coefficients
+    b = np.mat([[k**i for i in order_range] for k in range(-half_window, half_window+1)])
+    m = np.linalg.pinv(b).A[deriv] * rate**deriv * factorial(deriv)
+    # pad the signal at the extremes with
+    # values taken from the signal itself
+    firstvals = y[0] - np.abs( y[1:half_window+1][::-1] - y[0] )
+    lastvals = y[-1] + np.abs(y[-half_window-1:-1][::-1] - y[-1])
+    y = np.concatenate((firstvals, y, lastvals))
+    return np.convolve( m[::-1], y, mode='valid')
 
 
 class state:
@@ -168,7 +197,31 @@ class state:
                 self.K1[t] += k1
                 self.Hd[t] += hd
                 self.Bq1[t] += bq1
+        if self.T > 1:
+            # w = rfft(self.K1)
+            # f = rfftfreq(T, self.K1[1]-self.K1[0])
+            # spectrum = w**2
+            # cutoff_idx = spectrum < (spectrum.max()/5)
+            # w2 = w.copy()
+            # w2[cutoff_idx] = 0
+            # self.K1 = irfft(w2)
+            self.K1 = savgol_filter(self.K1, 41, 3)
+
         self.r1 = alpha*(self.K1/self.L)**(alpha-1.0)-delta
+
+        if self.T > 1:
+            time = datetime.now()
+            fig = plt.figure(facecolor='white')
+            ax = fig.add_subplot(111)
+            ax.plot(self.K1)
+            title = 'Duration: {}'.format(time)
+            filename = title + '.png'
+            if system() == 'Windows':
+                path = 'D:\Huggett\Figs'
+            else:
+                path = '/Users/hyunchangyi/GitHub/Huggett/Figs'
+            fullpath = os.path.join(path, filename)
+            fig.savefig(fullpath)
 
 
     def update_prices(self):
@@ -445,9 +498,9 @@ def transition_sub1(t,mu,prices,mu_t,params):
 
 
 def tran(N=20, TP=320, ng_i=1.012, ng_t=1.0, psi=0.5, delta=0.08,
-        aN=50, aL=-10, aH=40, Hs=10, hN=3, tol=0.05,
+        aN=40, aL=-10, aH=40, Hs=10, hN=2, tol=0.1,
         alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3, phi=0.75, eps=0.075,
-        beta=0.994, sigma=1.5, dti=0.5, ltv=0.7, tcost=0.02, gs=2.0):
+        beta=0.994, sigma=1.5, dti=0.5, ltv=0.7, tcost=0.02, gs=1.3):
     k_i, c_i = fss(ng=ng_i, psi=psi, delta=delta, aN=aN, aL=aL, aH=aH, Hs=Hs,
                     hN=hN, tol=tol, eps=eps, alpha=alpha, beta=beta, sigma=sigma, phi=phi,
                     dti=dti, ltv=ltv, tcost=tcost, gs=gs)
@@ -466,7 +519,7 @@ def tran(N=20, TP=320, ng_i=1.012, ng_t=1.0, psi=0.5, delta=0.08,
     mu_tp = [RawArray(c_double, mu_len) for t in range(TP)]
     for n in range(N):
         start_time = datetime.now()
-        print '\n','multiprocessing :'+str(n)+' is in progress : {} \n'.format(start_time)
+        print 'multiprocessing :'+str(n)+' is in progress : {} \n'.format(start_time)
         jobs = []
         for t, mu in enumerate(mu_tp):
             # transition_sub1(c,k_tp.prices,c_t.mu)
@@ -489,7 +542,7 @@ def tran(N=20, TP=320, ng_i=1.012, ng_t=1.0, psi=0.5, delta=0.08,
             k_tp.print_prices(n=n+1,t=t)
         k_tp.update_prices()
         end_time = datetime.now()
-        print 'transition ('+str(n)+') loop: {}'.format(end_time - start_time)
+        print 'transition ('+str(n)+') loop: {}\n'.format(end_time - start_time)
         if k_tp.converged():
             print 'Transition Path Converged! in', n+1,'iterations.'
             break
@@ -499,7 +552,7 @@ def tran(N=20, TP=320, ng_i=1.012, ng_t=1.0, psi=0.5, delta=0.08,
     return k_tp, mu_tp
 
 
-# if __name__ == '__main__':
+if __name__ == '__main__':
     start_time = datetime.now()
     k, mu = tran()
     end_time = datetime.now()
