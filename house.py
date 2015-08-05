@@ -214,7 +214,8 @@ class state:
             fig = plt.figure(facecolor='white')
             ax = fig.add_subplot(111)
             ax.plot(self.K1)
-            title = 'Duration: {}'.format(time)
+            title = "t=5:%2.2f%%"%(self.K1[5]) + "t=50:%2.2f%%"%(self.K1[50]) \
+                    + "t=100:%2.2f%%"%(self.K1[100])
             filename = title + '.png'
             if system() == 'Windows':
                 path = 'D:\Huggett\Figs'
@@ -444,7 +445,7 @@ class cohort:
 age-profile iteration and projection method"""
 
 
-def fss(ng=1.012, N=10, psi=0.2, delta=0.08, aN=50, aL=-10, aH=40, Hs=10, hN=3, tol=0.01,
+def fss(ng=1.012, N=20, psi=0.2, delta=0.08, aN=50, aL=-10, aH=40, Hs=10, hN=3, tol=0.01,
         alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3, phi=0.75, eps=0.075,
         beta=0.994, sigma=1.5, dti=0.5, ltv=0.7, tcost=0.02, gs=2.0):
     """Find Old and New Steady States with population growth rates ng and ng1"""
@@ -497,9 +498,9 @@ def transition_sub1(t,mu,prices,mu_t,params):
         mu[i] = c.vmu[i]
 
 
-def tran(N=20, TP=320, ng_i=1.012, ng_t=1.0, psi=0.5, delta=0.08,
-        aN=40, aL=-10, aH=40, Hs=10, hN=2, tol=0.1,
-        alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3, phi=0.75, eps=0.075,
+def tran(N=20, TP=220, ng_i=1.012, ng_t=1.0, psi=0.5, delta=0.08,
+        aN=40, aL=-10, aH=40, Hs=10, hN=2, tol=0.005,
+        alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3, phi=0.85, eps=0.05,
         beta=0.994, sigma=1.5, dti=0.5, ltv=0.7, tcost=0.02, gs=1.3):
     k_i, c_i = fss(ng=ng_i, psi=psi, delta=delta, aN=aN, aL=aL, aH=aH, Hs=Hs,
                     hN=hN, tol=tol, eps=eps, alpha=alpha, beta=beta, sigma=sigma, phi=phi,
