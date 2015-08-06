@@ -555,7 +555,7 @@ if __name__ == '__main__':
     start_time = datetime.now()
     par = params(psi=0.2, delta=0.08, aN=50, aL=-10, aH=40,
             Hs=10, hN=3, tol=0.01, phi=0.75, eps=0.075, tcost=0.02, gs=2.0,
-            alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3, savgol_windows=31, savgol_order=3,
+            alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3, savgol_windows=31, savgol_order=1,
             beta=0.994, sigma=1.5, dti=0.5, ltv=0.7)
 
     par.pg=1.012
