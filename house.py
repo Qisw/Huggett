@@ -26,17 +26,18 @@ from ctypes import Structure, c_double
 
 class params:
     """ This class is just a "struct" to hold the collection of PARAMETER values """
-    def __init__(self, T=1, alpha=0.36, delta=0.08, tau=0.2378, theta=0.1, zeta=0.3,
-        beta=0.994, sigma=1.5, W=45, R=34, a0 = 0, ng_init=1.012, ng_term=1.0-0.012,
-        aH=50.0, aL=0.0, aN=200, hN=5, psi=0.1, phi=0.5, dti=0.5, ltv=0.7, tcost=0.02, Hs=7,
-        tol=1e-2, eps=0.2, neg=-1e10, gs=1.5):
-        if T==1:
-            ng_term = ng_init
+    def __init__(self, T=1, pg=1.012, pg_change=0.0,
+        alpha=0.36, delta=0.08, tau=0.2378, theta=0.1, zeta=0.3,
+        beta=0.994, sigma=1.5, W=45, R=34, a0=0,
+        aH=50.0, aL=0.0, aN=200, hN=5, hL=0.1, hH=1.0,
+        psi=0.1, phi=0.5, dti=0.5, ltv=0.7,
+        tcost=0.02, Hs=7, tol=1e-2, eps=0.2, neg=-1e10, gs=1.5):
+
         self.alpha, self.zeta, self.delta, self.tau = alpha, zeta, delta, tau
         self.theta, self.psi = theta, psi
         self.tcost, self.dti, self.ltv = tcost, dti, ltv
         self.beta, self.sigma = beta, sigma
-        self.R, self.W, self.T = R, W, T
+        self.R, self.W = R, W
         self.aH, self.aL = aH, aL
         am = [-aH*linspace(0,1,aN)**gs][0][int(-aN*aL/(aH-aL)):0:-1]
         ap = aH*linspace(0,1,aN)**gs
@@ -44,8 +45,10 @@ class params:
         self.aN = len(self.aa)
         # self.aa = aL+aH*linspace(0,1,aN)
         self.phi, self.tol, self.neg, self.eps = phi, tol, neg, eps
-        self.hh = linspace(0.1,1.0,hN)   # hh = [0, 1, 2, 3, 4]
+        self.hh = linspace(hL,hH,hN)   # hh = [0, 1, 2, 3, 4]
         self.hN = hN
+        self.pg, self.pg_change = pg, pg_change
+        self.Hs = Hs
         """ LOAD PARAMETERS : SURVIVAL PROB., PRODUCTIVITY TRANSITION PROB. AND ... """
         if system() == 'Windows':
             self.sp = sp = loadtxt('parameters\sp.txt', delimiter='\n')  # survival probability
@@ -59,31 +62,30 @@ class params:
             self.ef = genfromtxt('parameters/ef.csv', delimiter=',')
         self.zN = self.pi.shape[0]
         self.mls = self.ef.shape[0]
+        self.T = T
+        """The following properties are conditional on T"""
         """ CALCULATE POPULATIONS OVER THE TRANSITION PATH """
-        m0 = array([prod(sp[:y+1])/ng_init**y for y in range(self.mls)], dtype=float)
-        m1 = array([prod(sp[:y+1])/ng_term**y for y in range(self.mls)], dtype=float)
-        self.pop = array([m1*ng_term**t for t in range(T)], dtype=float)
-        for t in range(min(T,self.mls-1)):
-            self.pop[t,t+1:] = m0[t+1:]*ng_init**t
-        """ House Supply OVER THE TRANSITION PATH """
-        self.Hs = Hs*ones(T)
+        # self.T = T
+        # if T==1:
+        #     ng_term = ng_init
+        # self.m0 = array([prod(sp[:y+1])/ng_init**y for y in range(self.mls)], dtype=float)
+        # self.m1 = array([prod(sp[:y+1])/ng_term**y for y in range(self.mls)], dtype=float)
+        # self.pop = array([self.m1*ng_term**t for t in range(T)], dtype=float)
+        # for t in range(min(T,self.mls-1)):
+        #     self.pop[t,t+1:] = self.m0[t+1:]*ng_init**t
 
 
     def print_params(self):
         print '\n===================== Parameters ====================='
         if self.T==1:
-            print 'Finding Steady State ... \n'
+            print 'Finding Steady State witn tol. %2.3f... \n'%(self.tol)
         else:
             print 'Finding Transition Path over %i periods ... \n'%(self.T)
         print 'Liquid Asset: [%i'%(self.aL),', %i]'%(self.aH),' with Grid Size %i'%(self.aN)
         print '       House: [%2.2f'%(self.hh[0]),', %2.2f]'%(self.hh[-1]),' with Grid Size %i'%(self.hN)
-        if self.T==1:
-            print 'House Supply: %2.2f'%(self.Hs[0])
-        else:
-            print 'House Supply: from %2.2f'%(self.Hs[0]), 'to %2.2f'%(self.Hs[-1]),' over the Transition Path'
-        if self.T>1:
-            print 'Populations : from %3.2f'%(sum(self.pop[0])), 'to %3.2f'%(sum(self.pop[-1]))
-        print '\n','psi  :%2.2f'%(self.psi), ' tol  :%2.2f'%(self.tol), ' eps:%2.2f'%(self.eps)\
+        print 'House Supply: %2.2f'%(self.Hs)
+        print 'Population Growth Rate Changes from %2.2f'%(sum(self.pg)), 'to %2.2f'%(sum(self.pg+self.pg_change))
+        print '\n','psi  :%2.2f'%(self.psi), ' eps  :%2.2f'%(self.eps)\
                 , ' phi:%2.2f'%(self.phi), ' tcost:%2.2f'%(self.tcost), '\n'\
              ,'delta:%2.2f'%(self.delta), ' alpha:%2.2f'%(self.alpha)\
                 , ' dti:%2.2f'%(self.dti), ' ltv:%2.2f'%(self.ltv), ' beta :%2.2f'%(self.beta)
@@ -91,7 +93,6 @@ class params:
 
 
 def savitzky_golay(y, window_size, order, deriv=0, rate=1):
-
     import numpy as np
     from math import factorial
 
@@ -137,7 +138,6 @@ class state:
         self.aa = aa = params.aa
         self.hh = hh = params.hh
         self.hN = hN = params.hN
-        self.Hs = params.Hs
         """ SURVIVAL PROB., PRODUCTIVITY TRANSITION PROB. AND ... """
         self.sp = sp = params.sp
         self.pi = pi = params.pi
@@ -146,11 +146,18 @@ class state:
         self.ef = ef = params.ef
         self.zN = zN = params.zN
         self.mls = mls = params.mls
+        self.ng_init = ng_init = params.pg
+        self.ng_term = ng_term = params.pg + params.pg_change
         """ CALCULATE POPULATIONS OVER THE TRANSITION PATH """
-        self.pop = params.pop
-        """Construct containers for market prices, tax rates, pension, bequest"""
         if T==1:
-            r_term, q_term, Bq_term = r_init, q_init, Bq_init
+            ng_term, r_term, q_term, Bq_term = ng_init, r_init, q_init, Bq_init
+        m0 = array([prod(sp[:y+1])/ng_init**y for y in range(self.mls)], dtype=float)
+        m1 = array([prod(sp[:y+1])/ng_term**y for y in range(self.mls)], dtype=float)
+        self.pop = array([m1*ng_term**t for t in range(T)], dtype=float)
+        for t in range(min(T,self.mls-1)):
+            self.pop[t,t+1:] = m0[t+1:]*ng_init**t
+        """Construct containers for market prices, tax rates, pension, bequest"""
+        self.Hs = params.Hs*ones(T)
         self.theta = params.theta*ones(T)
         self.tau = params.tau*ones(T)
         self.r = r_term*ones(T)
@@ -197,46 +204,7 @@ class state:
                 self.K1[t] += k1
                 self.Hd[t] += hd
                 self.Bq1[t] += bq1
-        if self.T > 1:
-            # w = rfft(self.K1)
-            # f = rfftfreq(T, self.K1[1]-self.K1[0])
-            # spectrum = w**2
-            # cutoff_idx = spectrum < (spectrum.max()/5)
-            # w2 = w.copy()
-            # w2[cutoff_idx] = 0
-            # self.K1 = irfft(w2)
-            K0 = self.K1
-            H0 = self.Hd
-            self.K1 = savgol_filter(K0, 51, 1)
-            self.Hd = savgol_filter(H0, 51, 1)
-
         self.r1 = alpha*(self.K1/self.L)**(alpha-1.0)-delta
-
-        if self.T > 1:
-            title = "t=5 %2.2f"%(self.K1[5]) + "t=50 %2.2f"%(self.K1[50]) \
-                    + "t=100 %2.2f"%(self.K1[100])
-            filename = title + '.png'
-            fig = plt.figure(facecolor='white')
-            plt.rcParams.update({'font.size': 8})
-            ax = fig.add_subplot(111)
-            ax1 = fig.add_subplot(221)
-            ax2 = fig.add_subplot(222)
-            ax3 = fig.add_subplot(223)
-            ax4 = fig.add_subplot(224)
-            fig.subplots_adjust(hspace=.5, wspace=.3, left=None, right=None,
-                                    top=None, bottom=None)
-            ax1.plot(self.K1)
-            ax1.plot(K0)
-            ax2.plot(self.Hd)
-            ax2.plot(H0)
-            ax3.plot(self.r)
-            ax4.plot(self.q)
-            if system() == 'Windows':
-                path = 'D:\Huggett\Figs'
-            else:
-                path = '/Users/hyunchangyi/GitHub/Huggett/Figs'
-            fullpath = os.path.join(path, filename)
-            fig.savefig(fullpath)
 
 
     def update_prices(self):
@@ -247,15 +215,48 @@ class state:
         self.K = ((self.r+delta)/alpha)**(1.0/(alpha-1.0))*self.L
         self.w = ((self.r+delta)/alpha)**(alpha/(alpha-1.0))*(1.0-alpha)
         self.b = self.theta*self.w*self.L/self.pr
+        self.Bq = self.phi*self.Bq + (1-self.phi)*self.Bq1
+        self.q = self.q*(1+self.eps*(self.Hd-self.Hs))
+        if self.T > 1:
+            r0 = self.r
+            q0 = self.q
+            self.r = savgol_filter(r0, 71, 1)
+            self.q = savgol_filter(q0, 71, 1)
+            title = "Capital, House Demand, Interest Rate and House Prices"
+            filename = title + '.png'
+            fig = plt.figure(facecolor='white')
+            plt.rcParams.update({'font.size': 8})
+            ax = fig.add_subplot(111)
+            ax1 = fig.add_subplot(221)
+            ax2 = fig.add_subplot(222)
+            ax3 = fig.add_subplot(223)
+            ax4 = fig.add_subplot(224)
+            fig.subplots_adjust(hspace=.5, wspace=.3, left=None, right=None,
+                                    top=None, bottom=None)
+            ax.tick_params(labelcolor='w', top='off', bottom='off', left='off',
+                            right='off')
+            ax1.plot(self.K1)
+            ax2.plot(self.Hd)
+            ax3.plot(self.r)
+            ax3.plot(r0)
+            ax4.plot(self.q)
+            ax4.plot(q0)
+            ax.set_title('Transition over %i periods'%(self.T), y=1.08)
+            ax1.set_title('Liquid Asset')
+            ax2.set_title('House Demand')
+            ax3.set_title('Interest Rate')
+            ax4.set_title('House Price')
+            if system() == 'Windows':
+                path = 'D:\Huggett\Figs'
+            else:
+                path = '/Users/hyunchangyi/GitHub/Huggett/Figs'
+            fullpath = os.path.join(path, filename)
+            fig.savefig(fullpath)
         self.prices[0] = self.r
         self.prices[1] = self.w
         self.prices[3] = self.b
-        self.Bq = self.phi*self.Bq + (1-self.phi)*self.Bq1
         self.prices[4] = self.Bq
-        self.q = self.q*(1+self.eps*(self.Hd-self.Hs))
         self.prices[2] = self.q
-        # array([self.r, self.w, self.q, self.b, self.Bq, self.theta, self.tau])
-
 
     def update_Bq(self):
         """ Update the amount of bequest given to households """
@@ -460,19 +461,14 @@ class cohort:
 age-profile iteration and projection method"""
 
 
-def fss(ng=1.012, N=20, psi=0.2, delta=0.08, aN=50, aL=-10, aH=40, Hs=10, hN=3, tol=0.01,
-        alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3, phi=0.75, eps=0.075,
-        beta=0.994, sigma=1.5, dti=0.5, ltv=0.7, tcost=0.02, gs=2.0):
+def fss(params, N=20):
     """Find Old and New Steady States with population growth rates ng and ng1"""
     start_time = datetime.now()
-    params0 = params(T=1, ng_init=ng, psi=psi, delta=delta, aN=aN, aL=aL, aH=aH, Hs=Hs,
-                    hN=hN, tol=tol, eps=eps, alpha=alpha, beta=beta, sigma=sigma, phi=phi,
-                    dti=dti, ltv=ltv, tcost=tcost, gs=gs)
-    params0.print_params()
-    c = cohort(params0)
-    k = state(params0)
-    converged = lambda k: max(absolute(k.Bq - k.Bq1)) < k.tol \
-                            and max(absolute(k.Hd - k.Hs)) < k.tol
+    params.print_params()
+    c = cohort(params)
+    k = state(params)
+    converged = lambda k: max(absolute(k.Bq - k.Bq1)) < params.tol \
+                            and max(absolute(k.Hd - k.Hs)) < params.tol
     for n in range(N):
         c.optimalpolicy(k.prices)
         k.aggregate([c.vmu])
@@ -490,10 +486,10 @@ def fss(ng=1.012, N=20, psi=0.2, delta=0.08, aN=50, aL=-10, aH=40, Hs=10, hN=3, 
         k.print_prices(n=n+1)
         k.update_prices()
         if k.converged():
-            print 'Economy Converged to SS! in',n+1,'iterations with', k.tol
+            print 'Economy Converged to SS! in',n+1
             break
         if n >= N-1:
-            print 'Economy Not Converged in',n+1,'iterations with', k.tol
+            print 'Economy Not Converged in',n+1
             break
     end_time = datetime.now()
     print('Duration: {}'.format(end_time - start_time))
@@ -513,24 +509,12 @@ def transition_sub1(t,mu,prices,mu_t,params):
         mu[i] = c.vmu[i]
 
 
-def tran(N=3, TP=280, ng_i=1.012, ng_t=1.0, psi=0.9, delta=0.08,
-        aN=80, aL=-10, aH=40, Hs=10, hN=5, tol=0.005,
-        alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3, phi=0.75, eps=0.075,
-        beta=0.994, sigma=1.5, dti=0.5, ltv=0.7, tcost=0.1, gs=1.0):
-    k_i, c_i = fss(ng=ng_i, psi=psi, delta=delta, aN=aN, aL=aL, aH=aH, Hs=Hs,
-                    hN=hN, tol=tol, eps=eps, alpha=alpha, beta=beta, sigma=sigma, phi=phi,
-                    dti=dti, ltv=ltv, tcost=tcost, gs=gs)
-    k_t, c_t = fss(ng=ng_t, psi=psi, delta=delta, aN=aN, aL=aL, aH=aH, Hs=Hs,
-                    hN=hN, tol=tol, eps=eps, alpha=alpha, beta=beta, sigma=sigma, phi=phi,
-                    dti=dti, ltv=ltv, tcost=tcost, gs=gs)
-    params_tp = params(T=TP, ng_init=ng_i, ng_term=ng_t,
-                    psi=psi, delta=delta, aN=aN, aL=aL, aH=aH, Hs=Hs,
-                    hN=hN, tol=tol, eps=eps, alpha=alpha, beta=beta, sigma=sigma, phi=phi,
-                    dti=dti, ltv=ltv, tcost=tcost, gs=gs)
-    params_tp.print_params()
-    k_tp = state(params_tp, r_init=k_i.r, r_term=k_t.r, q_init=k_i.q, q_term=k_t.q,
+def tran(params, k_i, c_i, k_t, c_t, N=5):
+    params.print_params()
+    TP = params.T
+    k_tp = state(params, r_init=k_i.r, r_term=k_t.r, q_init=k_i.q, q_term=k_t.q,
                             Bq_init=k_i.Bq, Bq_term=k_t.Bq)
-    mu_len = c_t.mls*c_t.hN*c_t.zN*c_t.aN
+    mu_len = params.mls*params.hN*params.zN*params.aN
     """Generate mu of TP cohorts who die in t = 0,...,T-1 with initial asset g0.apath[-t-1]"""
     mu_tp = [RawArray(c_double, mu_len) for t in range(TP)]
     for n in range(N):
@@ -539,7 +523,7 @@ def tran(N=3, TP=280, ng_i=1.012, ng_t=1.0, psi=0.9, delta=0.08,
         jobs = []
         for t, mu in enumerate(mu_tp):
             # transition_sub1(c,k_tp.prices,c_t.mu)
-            p = Process(target=transition_sub1, args=(t,mu,k_tp.prices,c_t.vmu,params_tp))
+            p = Process(target=transition_sub1, args=(t,mu,k_tp.prices,c_t.vmu,params))
             p.start()
             jobs.append(p)
             #병렬처리 개수 지정 20이면 20개 루프를 동시에 병렬로 처리
@@ -571,8 +555,21 @@ def tran(N=3, TP=280, ng_i=1.012, ng_t=1.0, psi=0.9, delta=0.08,
 
 if __name__ == '__main__':
     start_time = datetime.now()
-    k, mu = tran()
+    par = params(psi=0.2, delta=0.08, aN=50, aL=-10, aH=40,
+            Hs=10, hN=3, tol=0.01, phi=0.75, eps=0.075, tcost=0.02, gs=2.0,
+            alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3,
+            beta=0.994, sigma=1.5, dti=0.5, ltv=0.7)
+
+    par.pg=1.012
+    k0, c0 = fss(par, N=20)
+
+    par.pg=1.0
+    k1, c1 = fss(par, N=20)
+
+    par.pg, par.pg_change, par.T = 1.012, -0.012, 380
+    kt, mu = tran(par, k0, c0, k1, c1, N=15)
+
     end_time = datetime.now()
     print 'Total Duration: {}'.format(end_time - start_time)
-    plt.plot(k.r)
+    plt.plot(kt.r)
     plt.show()
