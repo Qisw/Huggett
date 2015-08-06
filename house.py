@@ -30,9 +30,9 @@ class params:
         alpha=0.36, delta=0.08, tau=0.2378, theta=0.1, zeta=0.3,
         beta=0.994, sigma=1.5, W=45, R=34, a0=0,
         aH=50.0, aL=0.0, aN=200, hN=5, hL=0.1, hH=1.0,
-        psi=0.1, phi=0.5, dti=0.5, ltv=0.7,
+        psi=0.1, phi=0.5, dti=0.5, ltv=0.7, savgol_windows=71, savgol_order=1,
         tcost=0.02, Hs=7, tol=1e-2, eps=0.2, neg=-1e10, gs=1.5):
-
+        self.savgol_windows, self.savgol_order = savgol_windows, savgol_order
         self.alpha, self.zeta, self.delta, self.tau = alpha, zeta, delta, tau
         self.theta, self.psi = theta, psi
         self.tcost, self.dti, self.ltv = tcost, dti, ltv
@@ -148,6 +148,7 @@ class state:
         self.mls = mls = params.mls
         self.ng_init = ng_init = params.pg
         self.ng_term = ng_term = params.pg + params.pg_change
+        self.savgol_windows, self.savgol_order = params.savgol_windows, params.savgol_order
         """ CALCULATE POPULATIONS OVER THE TRANSITION PATH """
         if T==1:
             ng_term, r_term, q_term, Bq_term = ng_init, r_init, q_init, Bq_init
@@ -207,7 +208,7 @@ class state:
         self.r1 = alpha*(self.K1/self.L)**(alpha-1.0)-delta
 
 
-    def update_prices(self):
+    def update_prices(self, n=0):
         """ Update market prices, w and r, and many others according to new
         aggregate capital and labor paths for years 0,...,T from last iteration """
         alpha, delta = self.alpha, self.delta
@@ -220,9 +221,9 @@ class state:
         if self.T > 1:
             r0 = self.r
             q0 = self.q
-            self.r = savgol_filter(r0, 71, 1)
-            self.q = savgol_filter(q0, 71, 1)
-            title = "Capital, House Demand, Interest Rate and House Prices"
+            self.r = savgol_filter(r0, self.savgol_windows, self.savgol_order)
+            self.q = savgol_filter(q0, self.savgol_windows, self.savgol_order)
+            title = "Transition Paths after %i iterations"%(n)
             filename = title + '.png'
             fig = plt.figure(facecolor='white')
             plt.rcParams.update({'font.size': 8})
@@ -484,7 +485,7 @@ def fss(params, N=20):
         #             "K=%2.3f," %(k.K),"K1=%2.3f," %(k.K1),"q=%2.3f," %(k.q),\
         #             "Hd=%2.3f," %(k.Hd),"Bq1=%2.3f," %(k.Bq1)
         k.print_prices(n=n+1)
-        k.update_prices()
+        k.update_prices(n=n+1)
         if k.converged():
             print 'Economy Converged to SS! in',n+1
             break
@@ -527,9 +528,6 @@ def tran(params, k_i, c_i, k_t, c_t, N=5):
             p.start()
             jobs.append(p)
             #병렬처리 개수 지정 20이면 20개 루프를 동시에 병렬로 처리
-        # for p in jobs:
-        #     p.join()
-        #     jobs=[]
             if len(jobs) % 8 == 0:
                 for p in jobs:
                     p.join()
@@ -541,7 +539,7 @@ def tran(params, k_i, c_i, k_t, c_t, N=5):
         for t in [0, int(TP/7), int(2*TP/7), int(3*TP/7),int(4*TP/7),
                     int(5*TP/7), int(6*TP/7), TP-1]:
             k_tp.print_prices(n=n+1,t=t)
-        k_tp.update_prices()
+        k_tp.update_prices(n=n+1)
         end_time = datetime.now()
         print 'transition ('+str(n)+') loop: {}\n'.format(end_time - start_time)
         if k_tp.converged():
@@ -557,7 +555,7 @@ if __name__ == '__main__':
     start_time = datetime.now()
     par = params(psi=0.2, delta=0.08, aN=50, aL=-10, aH=40,
             Hs=10, hN=3, tol=0.01, phi=0.75, eps=0.075, tcost=0.02, gs=2.0,
-            alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3,
+            alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3, savgol_windows=31, savgol_order=3,
             beta=0.994, sigma=1.5, dti=0.5, ltv=0.7)
 
     par.pg=1.012
