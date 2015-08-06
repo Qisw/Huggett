@@ -205,18 +205,32 @@ class state:
             # w2 = w.copy()
             # w2[cutoff_idx] = 0
             # self.K1 = irfft(w2)
-            self.K1 = savgol_filter(self.K1, 41, 3)
+            K0 = self.K1
+            H0 = self.Hd
+            self.K1 = savgol_filter(K0, 51, 1)
+            self.Hd = savgol_filter(H0, 51, 1)
 
         self.r1 = alpha*(self.K1/self.L)**(alpha-1.0)-delta
 
         if self.T > 1:
-            time = datetime.now()
-            fig = plt.figure(facecolor='white')
-            ax = fig.add_subplot(111)
-            ax.plot(self.K1)
-            title = "t=5:%2.2f%%"%(self.K1[5]) + "t=50:%2.2f%%"%(self.K1[50]) \
-                    + "t=100:%2.2f%%"%(self.K1[100])
+            title = "t=5 %2.2f"%(self.K1[5]) + "t=50 %2.2f"%(self.K1[50]) \
+                    + "t=100 %2.2f"%(self.K1[100])
             filename = title + '.png'
+            fig = plt.figure(facecolor='white')
+            plt.rcParams.update({'font.size': 8})
+            ax = fig.add_subplot(111)
+            ax1 = fig.add_subplot(221)
+            ax2 = fig.add_subplot(222)
+            ax3 = fig.add_subplot(223)
+            ax4 = fig.add_subplot(224)
+            fig.subplots_adjust(hspace=.5, wspace=.3, left=None, right=None,
+                                    top=None, bottom=None)
+            ax1.plot(self.K1)
+            ax1.plot(K0)
+            ax2.plot(self.Hd)
+            ax2.plot(H0)
+            ax3.plot(self.r)
+            ax4.plot(self.q)
             if system() == 'Windows':
                 path = 'D:\Huggett\Figs'
             else:
@@ -299,7 +313,8 @@ class state:
         ax4 = fig.add_subplot(235)
         ax5 = fig.add_subplot(233)
         ax6 = fig.add_subplot(236)
-        fig.subplots_adjust(hspace=.5, wspace=.3, left=None, right=None, top=None, bottom=None)
+        fig.subplots_adjust(hspace=.5, wspace=.3, left=None, right=None, top=None,
+                                bottom=None)
         ax.spines['top'].set_color('none')
         ax.spines['bottom'].set_color('none')
         ax.spines['left'].set_color('none')
@@ -346,7 +361,7 @@ class state:
         fullpath = os.path.join(path, filename)
         fig.savefig(fullpath)
         # ax4.axis([0, 80, 0, 1.1])
-        plt.show()
+        # plt.show()
 
 
 class cohort:
@@ -498,10 +513,10 @@ def transition_sub1(t,mu,prices,mu_t,params):
         mu[i] = c.vmu[i]
 
 
-def tran(N=20, TP=220, ng_i=1.012, ng_t=1.0, psi=0.5, delta=0.08,
-        aN=40, aL=-10, aH=40, Hs=10, hN=2, tol=0.005,
-        alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3, phi=0.85, eps=0.05,
-        beta=0.994, sigma=1.5, dti=0.5, ltv=0.7, tcost=0.02, gs=1.3):
+def tran(N=3, TP=280, ng_i=1.012, ng_t=1.0, psi=0.9, delta=0.08,
+        aN=80, aL=-10, aH=40, Hs=10, hN=5, tol=0.005,
+        alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3, phi=0.75, eps=0.075,
+        beta=0.994, sigma=1.5, dti=0.5, ltv=0.7, tcost=0.1, gs=1.0):
     k_i, c_i = fss(ng=ng_i, psi=psi, delta=delta, aN=aN, aL=aL, aH=aH, Hs=Hs,
                     hN=hN, tol=tol, eps=eps, alpha=alpha, beta=beta, sigma=sigma, phi=phi,
                     dti=dti, ltv=ltv, tcost=tcost, gs=gs)
@@ -539,7 +554,8 @@ def tran(N=20, TP=220, ng_i=1.012, ng_t=1.0, psi=0.5, delta=0.08,
             for p in jobs:
                 p.join()
         k_tp.aggregate(mu_tp)
-        for t in [0, int(TP/4), int(TP/2), int(3*TP/4), TP-1]:
+        for t in [0, int(TP/7), int(2*TP/7), int(3*TP/7),int(4*TP/7),
+                    int(5*TP/7), int(6*TP/7), TP-1]:
             k_tp.print_prices(n=n+1,t=t)
         k_tp.update_prices()
         end_time = datetime.now()
