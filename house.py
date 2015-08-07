@@ -234,6 +234,10 @@ class state:
             ax4 = fig.add_subplot(224)
             fig.subplots_adjust(hspace=.5, wspace=.3, left=None, right=None,
                                     top=None, bottom=None)
+            ax.spines['top'].set_color('none')
+            ax.spines['bottom'].set_color('none')
+            ax.spines['left'].set_color('none')
+            ax.spines['right'].set_color('none')
             ax.tick_params(labelcolor='w', top='off', bottom='off', left='off',
                             right='off')
             ax1.plot(self.K1)
@@ -304,6 +308,10 @@ class state:
         title = 'psi=%2.2f'%(self.psi) + ' aN=%2.2f'%(self.aN) +' hN=%2.2f'%(self.hN) +\
                 ' r=%2.2f%%'%(self.r[t]*100) + ' q=%2.2f'%(self.q[t]) + \
                 ' K=%2.1f'%(self.K[t]) + ' Hd=%2.1f'%(self.Hd[t])
+        if T == 1:
+            title = 'In SS, ' + title
+        else:
+            title = 'In Trans., at %i '%(t) + title
         filename = title + '.png'
         fig = plt.figure(facecolor='white')
         plt.rcParams.update({'font.size': 8})
@@ -523,7 +531,6 @@ def tran(params, k_i, c_i, k_t, c_t, N=5):
         print 'multiprocessing :'+str(n)+' is in progress : {} \n'.format(start_time)
         jobs = []
         for t, mu in enumerate(mu_tp):
-            # transition_sub1(c,k_tp.prices,c_t.mu)
             p = Process(target=transition_sub1, args=(t,mu,k_tp.prices,c_t.vmu,params))
             p.start()
             jobs.append(p)
@@ -536,8 +543,7 @@ def tran(params, k_i, c_i, k_t, c_t, N=5):
             for p in jobs:
                 p.join()
         k_tp.aggregate(mu_tp)
-        for t in [0, int(TP/7), int(2*TP/7), int(3*TP/7),int(4*TP/7),
-                    int(5*TP/7), int(6*TP/7), TP-1]:
+        for y in linspace(0,TP-1,10).astype(int):
             k_tp.print_prices(n=n+1,t=t)
         k_tp.update_prices(n=n+1)
         end_time = datetime.now()
@@ -555,7 +561,8 @@ if __name__ == '__main__':
     start_time = datetime.now()
     par = params(psi=0.2, delta=0.08, aN=50, aL=-10, aH=40,
             Hs=10, hN=3, tol=0.01, phi=0.75, eps=0.075, tcost=0.02, gs=2.0,
-            alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3, savgol_windows=31, savgol_order=1,
+            alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3,
+            savgol_windows=31, savgol_order=1,
             beta=0.994, sigma=1.5, dti=0.5, ltv=0.7)
 
     par.pg=1.012
