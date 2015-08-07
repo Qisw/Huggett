@@ -218,11 +218,13 @@ class state:
             r0 = self.r
             q0 = self.q
             if self.filter_on == 1:
-                self.r = savgol_filter(r0, self.savgol_windows, self.savgol_order)
-                self.q = savgol_filter(q0, self.savgol_windows, self.savgol_order)
-            elif self.filter_on == 2:
-                self.r = sm.nonparametric.lowess(r0, range(self.T), self.lowess_frac)
-                self.q = sm.nonparametric.lowess(q0, range(self.T), self.lowess_frac)
+                self.r[:20] = savgol_filter(r0[:20], 5,1)
+                self.r[20:] = savgol_filter(r0[20:], self.savgol_windows, self.savgol_order)
+                self.q[:20] = savgol_filter(q0[:20], 5,1)
+                self.q[20:] = savgol_filter(q0[20:], self.savgol_windows, self.savgol_order)
+            # elif self.filter_on == 2:
+            #     self.r = sm.nonparametric.lowess(r0, range(self.T), self.lowess_frac)[:,1]
+            #     self.q = sm.nonparametric.lowess(q0, range(self.T), self.lowess_frac)[:,1]
             title = "Transition Paths after %i iterations"%(n)
             filename = title + '.png'
             fig = plt.figure(facecolor='white')
@@ -553,7 +555,7 @@ if __name__ == '__main__':
     par = params(psi=0.2, delta=0.08, aN=30, aL=-10, aH=40,
             Hs=10, hN=3, tol=0.001, phi=0.75, eps=0.075, tcost=0.02, gs=2.0,
             alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3,
-            savgol_windows=3, savgol_order=3, lowess_frac=0.05, filter_on=2,
+            savgol_windows=31, savgol_order=1, filter_on=1,
             beta=0.994, sigma=1.5, dti=0.5, ltv=0.7)
 
     par.pg=1.012
