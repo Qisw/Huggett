@@ -246,6 +246,10 @@ class state:
             ax3.plot(r0)
             ax4.plot(self.q)
             ax4.plot(q0)
+            ax1.axis([0, self.T, 60, 120])
+            ax2.axis([0, self.T, 6, 12])
+            ax3.axis([0, self.T, 0.02, 0.08])
+            ax4.axis([0, self.T, 4, 12])
             ax.set_title('Transition over %i periods'%(self.T), y=1.08)
             ax1.set_title('Liquid Asset')
             ax2.set_title('House Demand')
@@ -286,7 +290,7 @@ class state:
               "Bq=%2.2f," %(self.Bq1[t])
 
 
-    def plot(self, t=0, yi=0, yt=78, ny=10):
+    def plot(self, t=0, yi=0, yt=78, ny=7):
         """plot life-path of aggregate capital accumulation and house demand"""
         mls = self.mls
         pop, aa, hh, aN, hN = self.pop, self.aa, self.hh, self.aN, self.hN
@@ -476,22 +480,9 @@ def fss(params, N=20):
     params.print_params()
     c = cohort(params)
     k = state(params)
-    converged = lambda k: max(absolute(k.Bq - k.Bq1)) < params.tol \
-                            and max(absolute(k.Hd - k.Hs)) < params.tol
     for n in range(N):
         c.optimalpolicy(k.prices)
         k.aggregate([c.vmu])
-        # while True:
-        #     k.update_Bq()
-        #     k.update_q()
-        #     if converged(k):
-        #         break
-        #     c.optimalpolicy(k.prices)
-        #     k.aggregate([c.vmu])
-        #     print 'Hs and Hd, diff', k.Hd, k.Hs, max(absolute(k.Hd - k.Hs))
-        #     print "n=%i" %(n+1),"r=%2.3f" %(k.r),"r1=%2.3f" %(k.r1),\
-        #             "K=%2.3f," %(k.K),"K1=%2.3f," %(k.K1),"q=%2.3f," %(k.q),\
-        #             "Hd=%2.3f," %(k.Hd),"Bq1=%2.3f," %(k.Bq1)
         k.print_prices(n=n+1)
         k.update_prices(n=n+1)
         if k.converged():
@@ -543,7 +534,7 @@ def tran(params, k_i, c_i, k_t, c_t, N=5):
             for p in jobs:
                 p.join()
         k_tp.aggregate(mu_tp)
-        for y in linspace(0,TP-1,10).astype(int):
+        for t in linspace(0,TP-1,10).astype(int):
             k_tp.print_prices(n=n+1,t=t)
         k_tp.update_prices(n=n+1)
         end_time = datetime.now()
@@ -560,21 +551,22 @@ def tran(params, k_i, c_i, k_t, c_t, N=5):
 if __name__ == '__main__':
     start_time = datetime.now()
     par = params(psi=0.2, delta=0.08, aN=50, aL=-10, aH=40,
-            Hs=10, hN=3, tol=0.01, phi=0.75, eps=0.075, tcost=0.02, gs=2.0,
+            Hs=10, hN=5, tol=0.002, phi=0.75, eps=0.075, tcost=0.02, gs=2.0,
             alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3,
             savgol_windows=31, savgol_order=1,
             beta=0.994, sigma=1.5, dti=0.5, ltv=0.7)
 
     par.pg=1.012
-    k0, c0 = fss(par, N=20)
+    k0, c0 = fss(par, N=30)
 
     par.pg=1.0
-    k1, c1 = fss(par, N=20)
+    k1, c1 = fss(par, N=30)
 
-    par.pg, par.pg_change, par.T = 1.012, -0.012, 380
-    kt, mu = tran(par, k0, c0, k1, c1, N=15)
+    par.pg, par.pg_change, par.T = 1.012, -0.012, 280
+    kt, mu = tran(par, k0, c0, k1, c1, N=20)
+
+    for t in linspace(0,TP-1,10).astype(int):
+        k_tp.plot(t=t)
 
     end_time = datetime.now()
     print 'Total Duration: {}'.format(end_time - start_time)
-    plt.plot(kt.r)
-    plt.show()
