@@ -9,6 +9,7 @@ from scipy.interpolate import interp1d
 from scipy.optimize import fsolve, minimize_scalar, broyden1, broyden2
 from scipy.fftpack import rfft, rfftfreq, irfft
 from scipy.signal import savgol_filter
+import statsmodels.api as sm
 from numpy import linspace, mean, array, zeros, absolute, loadtxt, dot, prod, int,\
                     genfromtxt, sum, argmax, tile, concatenate, ones, log, \
                     unravel_index, cumsum, meshgrid, atleast_2d, where, newaxis,\
@@ -30,9 +31,12 @@ class params:
         alpha=0.36, delta=0.08, tau=0.2378, theta=0.1, zeta=0.3,
         beta=0.994, sigma=1.5, W=45, R=34, a0=0,
         aH=50.0, aL=0.0, aN=200, hN=5, hL=0.1, hH=1.0,
-        psi=0.1, phi=0.5, dti=0.5, ltv=0.7, savgol_windows=71, savgol_order=1,
+        psi=0.1, phi=0.5, dti=0.5, ltv=0.7,
+        savgol_windows=71, savgol_order=1, filter_on=1, lowess_frac=0.05,
         tcost=0.02, Hs=7, tol=1e-2, eps=0.2, neg=-1e10, gs=1.5):
         self.savgol_windows, self.savgol_order = savgol_windows, savgol_order
+        self.lowess_frac = lowess_frac
+        self.filter_on = filter_on
         self.alpha, self.zeta, self.delta, self.tau = alpha, zeta, delta, tau
         self.theta, self.psi = theta, psi
         self.tcost, self.dti, self.ltv = tcost, dti, ltv
@@ -63,16 +67,6 @@ class params:
         self.zN = self.pi.shape[0]
         self.mls = self.ef.shape[0]
         self.T = T
-        """The following properties are conditional on T"""
-        """ CALCULATE POPULATIONS OVER THE TRANSITION PATH """
-        # self.T = T
-        # if T==1:
-        #     ng_term = ng_init
-        # self.m0 = array([prod(sp[:y+1])/ng_init**y for y in range(self.mls)], dtype=float)
-        # self.m1 = array([prod(sp[:y+1])/ng_term**y for y in range(self.mls)], dtype=float)
-        # self.pop = array([self.m1*ng_term**t for t in range(T)], dtype=float)
-        # for t in range(min(T,self.mls-1)):
-        #     self.pop[t,t+1:] = self.m0[t+1:]*ng_init**t
 
 
     def print_params(self):
@@ -149,6 +143,8 @@ class state:
         self.ng_init = ng_init = params.pg
         self.ng_term = ng_term = params.pg + params.pg_change
         self.savgol_windows, self.savgol_order = params.savgol_windows, params.savgol_order
+        self.lowess_frac = params.lowess_frac
+        self.filter_on = params.filter_on
         """ CALCULATE POPULATIONS OVER THE TRANSITION PATH """
         if T==1:
             ng_term, r_term, q_term, Bq_term = ng_init, r_init, q_init, Bq_init
@@ -221,8 +217,12 @@ class state:
         if self.T > 1:
             r0 = self.r
             q0 = self.q
-            self.r = savgol_filter(r0, self.savgol_windows, self.savgol_order)
-            self.q = savgol_filter(q0, self.savgol_windows, self.savgol_order)
+            if self.filter_on == 1:
+                self.r = savgol_filter(r0, self.savgol_windows, self.savgol_order)
+                self.q = savgol_filter(q0, self.savgol_windows, self.savgol_order)
+            elif self.filter_on == 2:
+                self.r = sm.nonparametric.lowess(r0, range(self.T), self.lowess_frac)
+                self.q = sm.nonparametric.lowess(q0, range(self.T), self.lowess_frac)
             title = "Transition Paths after %i iterations"%(n)
             filename = title + '.png'
             fig = plt.figure(facecolor='white')
@@ -246,10 +246,10 @@ class state:
             ax3.plot(r0)
             ax4.plot(self.q)
             ax4.plot(q0)
-            ax1.axis([0, self.T, 60, 120])
-            ax2.axis([0, self.T, 6, 12])
-            ax3.axis([0, self.T, 0.02, 0.08])
-            ax4.axis([0, self.T, 4, 12])
+            ax1.axis([0, self.T, 20, 120])
+            ax2.axis([0, self.T, 6, 14])
+            ax3.axis([0, self.T, 0.02, 0.10])
+            ax4.axis([0, self.T, 4, 14])
             ax.set_title('Transition over %i periods'%(self.T), y=1.08)
             ax1.set_title('Liquid Asset')
             ax2.set_title('House Demand')
@@ -286,7 +286,7 @@ class state:
 
     def print_prices(self, n=0, t=0):
         print "n=%2i"%(n)," t=%3i"%(t),"r=%2.2f%%"%(self.r[t]*100),"Pop.=%3.1f"%(sum(self.pop[t])),\
-              "Ks=%3.1f,"%(self.K1[t]),"q=%2.1f,"%(self.q[t]),"Hd=%3.1f,"%(self.Hd[t]),\
+              "Ks=%3.1f,"%(self.K1[t]),"q=%2.2f,"%(self.q[t]),"Hd=%3.2f,"%(self.Hd[t]),\
               "Bq=%2.2f," %(self.Bq1[t])
 
 
@@ -519,7 +519,7 @@ def tran(params, k_i, c_i, k_t, c_t, N=5):
     mu_tp = [RawArray(c_double, mu_len) for t in range(TP)]
     for n in range(N):
         start_time = datetime.now()
-        print 'multiprocessing :'+str(n)+' is in progress : {} \n'.format(start_time)
+        print str(n+1)+'th loop started at {} \n ...'.format(start_time)
         jobs = []
         for t, mu in enumerate(mu_tp):
             p = Process(target=transition_sub1, args=(t,mu,k_tp.prices,c_t.vmu,params))
@@ -538,7 +538,7 @@ def tran(params, k_i, c_i, k_t, c_t, N=5):
             k_tp.print_prices(n=n+1,t=t)
         k_tp.update_prices(n=n+1)
         end_time = datetime.now()
-        print 'transition ('+str(n)+') loop: {}\n'.format(end_time - start_time)
+        print '...\n'+str(n+1)+'th loop completed, it took {}\n'.format(end_time - start_time)
         if k_tp.converged():
             print 'Transition Path Converged! in', n+1,'iterations.'
             break
@@ -550,10 +550,10 @@ def tran(params, k_i, c_i, k_t, c_t, N=5):
 
 if __name__ == '__main__':
     start_time = datetime.now()
-    par = params(psi=0.2, delta=0.08, aN=50, aL=-10, aH=40,
-            Hs=10, hN=5, tol=0.002, phi=0.75, eps=0.075, tcost=0.02, gs=2.0,
+    par = params(psi=0.2, delta=0.08, aN=30, aL=-10, aH=40,
+            Hs=10, hN=3, tol=0.001, phi=0.75, eps=0.075, tcost=0.02, gs=2.0,
             alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3,
-            savgol_windows=31, savgol_order=1,
+            savgol_windows=3, savgol_order=3, lowess_frac=0.05, filter_on=2,
             beta=0.994, sigma=1.5, dti=0.5, ltv=0.7)
 
     par.pg=1.012
@@ -562,11 +562,11 @@ if __name__ == '__main__':
     par.pg=1.0
     k1, c1 = fss(par, N=30)
 
-    par.pg, par.pg_change, par.T = 1.012, -0.012, 280
-    kt, mu = tran(par, k0, c0, k1, c1, N=20)
+    par.pg, par.pg_change, par.T = 1.012, -0.012, 220
+    kt, mu = tran(par, k0, c0, k1, c1, N=10)
 
-    for t in linspace(0,TP-1,10).astype(int):
+    for t in linspace(0,par.T-1,10).astype(int):
         k_tp.plot(t=t)
 
     end_time = datetime.now()
-    print 'Total Duration: {}'.format(end_time - start_time)
+    print 'Total Time: {}'.format(end_time - start_time)
