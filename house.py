@@ -220,12 +220,12 @@ class state:
             r0 = self.r
             q0 = self.q
             if self.filter_on == 1:
-                # r1 = concatenate((self.r_init*ones(20),r0))
-                # q1 = concatenate((self.q_init*ones(20),q0))
-                # self.r = savgol_filter(r1, self.savgol_windows, self.savgol_order)[20:]
-                # self.q = savgol_filter(q1, self.savgol_windows, self.savgol_order)[20:]
-                self.r = savgol_filter(r0, self.savgol_windows, self.savgol_order)
-                self.q = savgol_filter(q0, self.savgol_windows, self.savgol_order)
+                r1 = concatenate((self.r_init*ones(40),r0))
+                q1 = concatenate((self.q_init*ones(40),q0))
+                self.r = savgol_filter(r1, self.savgol_windows, self.savgol_order)[40:]
+                self.q = savgol_filter(q1, self.savgol_windows, self.savgol_order)[40:]
+                # self.r = savgol_filter(r0, self.savgol_windows, self.savgol_order)
+                # self.q = savgol_filter(q0, self.savgol_windows, self.savgol_order)
             title = "Transition Paths after %i iterations"%(n)
             filename = title + '.png'
             fig = plt.figure(facecolor='white')
@@ -569,7 +569,7 @@ if __name__ == '__main__':
     kt, mu = tran(par, k0, c0, k1, c1, N=10)
 
     for t in linspace(0,par.T-1,10).astype(int):
-        k_tp.plot(t=t)
+        kt.plot(t=t)
 
     end_time = datetime.now()
     print 'Total Time: {}'.format(end_time - start_time)
