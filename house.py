@@ -148,6 +148,8 @@ class state:
         """ CALCULATE POPULATIONS OVER THE TRANSITION PATH """
         if T==1:
             ng_term, r_term, q_term, Bq_term = ng_init, r_init, q_init, Bq_init
+        self.r_init = r_init
+        self.q_init = q_init
         m0 = array([prod(sp[:y+1])/ng_init**y for y in range(self.mls)], dtype=float)
         m1 = array([prod(sp[:y+1])/ng_term**y for y in range(self.mls)], dtype=float)
         self.pop = array([m1*ng_term**t for t in range(T)], dtype=float)
@@ -218,13 +220,12 @@ class state:
             r0 = self.r
             q0 = self.q
             if self.filter_on == 1:
-                self.r[:20] = savgol_filter(r0[:20], 5,1)
-                self.r[20:] = savgol_filter(r0[20:], self.savgol_windows, self.savgol_order)
-                self.q[:20] = savgol_filter(q0[:20], 5,1)
-                self.q[20:] = savgol_filter(q0[20:], self.savgol_windows, self.savgol_order)
-            # elif self.filter_on == 2:
-            #     self.r = sm.nonparametric.lowess(r0, range(self.T), self.lowess_frac)[:,1]
-            #     self.q = sm.nonparametric.lowess(q0, range(self.T), self.lowess_frac)[:,1]
+                # r1 = concatenate((self.r_init*ones(20),r0))
+                # q1 = concatenate((self.q_init*ones(20),q0))
+                # self.r = savgol_filter(r1, self.savgol_windows, self.savgol_order)[20:]
+                # self.q = savgol_filter(q1, self.savgol_windows, self.savgol_order)[20:]
+                self.r = savgol_filter(r0, self.savgol_windows, self.savgol_order)
+                self.q = savgol_filter(q0, self.savgol_windows, self.savgol_order)
             title = "Transition Paths after %i iterations"%(n)
             filename = title + '.png'
             fig = plt.figure(facecolor='white')
@@ -536,7 +537,7 @@ def tran(params, k_i, c_i, k_t, c_t, N=5):
             for p in jobs:
                 p.join()
         k_tp.aggregate(mu_tp)
-        for t in linspace(0,TP-1,10).astype(int):
+        for t in linspace(0,TP-1,20).astype(int):
             k_tp.print_prices(n=n+1,t=t)
         k_tp.update_prices(n=n+1)
         end_time = datetime.now()
