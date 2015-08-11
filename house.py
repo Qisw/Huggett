@@ -77,7 +77,7 @@ class params:
             print 'Finding Transition Path over %i periods ... \n'%(self.T)
         print 'Liquid Asset: [%i'%(self.aL),', %i]'%(self.aH),' with Grid Size %i'%(self.aN)
         print '       House: [%2.2f'%(self.hh[0]),', %2.2f]'%(self.hh[-1]),' with Grid Size %i'%(self.hN)
-        print 'House Supply: %2.2f'%(self.Hs)
+        print 'House Supply per Capita: %2.2f'%(self.Hs)
         print 'Population Growth Rate Changes from %2.2f'%(sum(self.pg)), 'to %2.2f'%(sum(self.pg+self.pg_change))
         print '\n','psi  :%2.2f'%(self.psi), ' eps  :%2.2f'%(self.eps)\
                 , ' phi:%2.2f'%(self.phi), ' tcost:%2.2f'%(self.tcost), '\n'\
@@ -156,7 +156,7 @@ class state:
         for t in range(min(T,self.mls-1)):
             self.pop[t,t+1:] = m0[t+1:]*ng_init**t
         """Construct containers for market prices, tax rates, pension, bequest"""
-        self.Hs = params.Hs*ones(T)
+        self.Hs = [params.Hs*sum(self.pop[t]) for t in range(T)]
         self.theta = params.theta*ones(T)
         self.tau = params.tau*ones(T)
         self.r = r_term*ones(T)
@@ -220,12 +220,12 @@ class state:
             r0 = self.r
             q0 = self.q
             if self.filter_on == 1:
-                # r1 = concatenate((self.r_init*ones(20),r0))
-                # q1 = concatenate((self.q_init*ones(20),q0))
-                # self.r = savgol_filter(r1, self.savgol_windows, self.savgol_order)[20:]
-                # self.q = savgol_filter(q1, self.savgol_windows, self.savgol_order)[20:]
-                self.r = savgol_filter(r0, self.savgol_windows, self.savgol_order)
-                self.q = savgol_filter(q0, self.savgol_windows, self.savgol_order)
+                r1 = concatenate((self.r_init*ones(30),r0))
+                q1 = concatenate((self.q_init*ones(30),q0))
+                self.r = savgol_filter(r1, self.savgol_windows, self.savgol_order)[30:]
+                self.q = savgol_filter(q1, self.savgol_windows, self.savgol_order)[30:]
+                # self.r = savgol_filter(r0, self.savgol_windows, self.savgol_order)
+                # self.q = savgol_filter(q0, self.savgol_windows, self.savgol_order)
             title = "Transition Paths after %i iterations"%(n)
             filename = title + '.png'
             fig = plt.figure(facecolor='white')
@@ -244,15 +244,21 @@ class state:
             ax.tick_params(labelcolor='w', top='off', bottom='off', left='off',
                             right='off')
             ax1.plot(self.K1)
-            ax2.plot(self.Hd)
-            ax3.plot(self.r)
-            ax3.plot(r0)
-            ax4.plot(self.q)
-            ax4.plot(q0)
+            ax2.plot(self.Hd,label='Demand')
+            ax2.plot(self.Hs,label='Supply')
+            ax3.plot(self.r,label='smoothed')
+            ax3.plot(r0,label='updated')
+            ax3.plot(0,self.r_init,'o',label='initial')
+            ax4.plot(self.q,label='smoothed')
+            ax4.plot(q0,label='updated')
+            ax4.plot(0,self.q_init,'o',label='initial')
+            ax2.legend(prop={'size':7})
+            ax3.legend(prop={'size':7})
+            ax4.legend(prop={'size':7})
             ax1.axis([0, self.T, 20, 120])
-            ax2.axis([0, self.T, 6, 14])
-            ax3.axis([0, self.T, 0.02, 0.10])
-            ax4.axis([0, self.T, 4, 14])
+            ax2.axis([0, self.T, 8, 20])
+            ax3.axis([0, self.T, 0.02, 0.08])
+            ax4.axis([0, self.T, 2, 8])
             ax.set_title('Transition over %i periods'%(self.T), y=1.08)
             ax1.set_title('Liquid Asset')
             ax2.set_title('House Demand')
@@ -269,6 +275,7 @@ class state:
         self.prices[3] = self.b
         self.prices[4] = self.Bq
         self.prices[2] = self.q
+
 
     def update_Bq(self):
         """ Update the amount of bequest given to households """
@@ -289,7 +296,7 @@ class state:
 
     def print_prices(self, n=0, t=0):
         print "n=%2i"%(n)," t=%3i"%(t),"r=%2.2f%%"%(self.r[t]*100),"Pop.=%3.1f"%(sum(self.pop[t])),\
-              "Ks=%3.1f,"%(self.K1[t]),"q=%2.2f,"%(self.q[t]),"Hd=%3.2f,"%(self.Hd[t]),\
+              "Ks=%3.1f,"%(self.K1[t]),"q=%2.2f,"%(self.q[t]),"edH=%3.2f,"%(self.Hd[t]-self.Hs[t]),\
               "Bq=%2.2f," %(self.Bq1[t])
 
 
@@ -304,6 +311,7 @@ class state:
         hp = zeros(mls)
         al = zeros(aN)
         hl = zeros(hN)
+        ah = zeros((hN,aN))
         """Aggregate all cohorts' capital and labor supply at each year"""
         for y in range(mls):
             ap[y] = sum(mu[y],(0,1)).dot(aa)*pop[t,y]
@@ -312,10 +320,16 @@ class state:
             h[y] = sum(mu[y],(1,2)).dot(hh)
             al += sum(mu[y],(0,1))*pop[t,y]
             hl += sum(mu[y],(1,2))*pop[t,y]
+            """ ah: hN by aN matrix that represents populations of each pairs
+            of house and asset holders """
+            ah += sum(mu[y],1)*pop[t,y]
+        w = hh[:,newaxis]*self.q[t] + aa[newaxis,:]
+        unsorted = array((ah.ravel(),w.ravel())).T
+        ah, w = unsorted[unsorted[:,1].argsort()].T
         title = 'psi=%2.2f'%(self.psi) + ' aN=%2.2f'%(self.aN) +' hN=%2.2f'%(self.hN) +\
                 ' r=%2.2f%%'%(self.r[t]*100) + ' q=%2.2f'%(self.q[t]) + \
                 ' K=%2.1f'%(self.K[t]) + ' Hd=%2.1f'%(self.Hd[t])
-        if T == 1:
+        if self.T == 1:
             title = 'In SS, ' + title
         else:
             title = 'In Trans., at %i '%(t) + title
@@ -346,7 +360,8 @@ class state:
         for y in linspace(yi,yt,ny).astype(int):
             ax4.plot(hh,sum(mu[y],(1,2)),label='age %i'%(y))
         ax5.plot(cumsum(al)/sum(al),cumsum(aa*al)/sum(aa*al),".")
-        ax6.plot(cumsum(hl)/sum(hl),cumsum(hh*hl)/sum(hh*hl),".")
+        # ax6.plot(cumsum(hl)/sum(hl),cumsum(hh*hl)/sum(hh*hl),".")
+        ax6.plot(cumsum(ah)/sum(ah),cumsum(ah*w)/sum(ah*w),".")
         # ax1.legend(bbox_to_anchor=(0.9,1.0),loc='center',prop={'size':8})
         ax1.legend(prop={'size':7})
         ax2.legend(prop={'size':7})
@@ -363,14 +378,16 @@ class state:
         ax5.set_xlabel('Cum. Share of Agents from Lower to Higher')
         ax6.set_xlabel('Cum. Share of Agents from Lower to Higher')
         ax5.set_ylabel('Cum. Share of Asset Occupied')
-        ax6.set_ylabel('Cum. Share of House Occupied')
+        # ax6.set_ylabel('Cum. Share of House Occupied')
+        ax6.set_ylabel('Cum. Share of Total Wealth')
         ax.set_title(title, y=1.08)
         ax1.set_title('Life-Cycle Liquid Asset Accumulation')
         ax2.set_title('Life-Cycle House Size')
         ax3.set_title('Dist. of Liquid Asset w/i Cohort')
         ax4.set_title('Dist. of House Size w/i Cohort')
         ax5.set_title('Lorenz Curve for Liquid Asset')
-        ax6.set_title('Lorenz Curve for House')
+        # ax6.set_title('Lorenz Curve for House')
+        ax6.set_title('Lorenz Curve for Total Wealth')
         if system() == 'Windows':
             path = 'D:\Huggett\Figs'
         else:
@@ -551,12 +568,17 @@ def tran(params, k_i, c_i, k_t, c_t, N=5):
     return k_tp, mu_tp
 
 
+# def smoother(y, w=50):
+#     L = len(y)
+#     y[1] = mean(y[])
+
+
 if __name__ == '__main__':
     start_time = datetime.now()
-    par = params(psi=0.2, delta=0.08, aN=30, aL=-10, aH=40,
-            Hs=10, hN=3, tol=0.001, phi=0.75, eps=0.075, tcost=0.02, gs=2.0,
+    par = params(psi=0.2, delta=0.08, aN=40, aL=-10, aH=40,
+            Hs=0.3, hN=3, tol=0.001, phi=0.75, eps=0.075, tcost=0.02, gs=2.0,
             alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3,
-            savgol_windows=31, savgol_order=1, filter_on=1,
+            savgol_windows=41, savgol_order=1, filter_on=1,
             beta=0.994, sigma=1.5, dti=0.5, ltv=0.7)
 
     par.pg=1.012
@@ -566,10 +588,10 @@ if __name__ == '__main__':
     k1, c1 = fss(par, N=30)
 
     par.pg, par.pg_change, par.T = 1.012, -0.012, 220
-    kt, mu = tran(par, k0, c0, k1, c1, N=10)
+    kt, mu = tran(par, k0, c0, k1, c1, N=3)
 
     for t in linspace(0,par.T-1,10).astype(int):
-        k_tp.plot(t=t)
+        kt.plot(t=t)
 
     end_time = datetime.now()
     print 'Total Time: {}'.format(end_time - start_time)
