@@ -150,8 +150,6 @@ class state:
             ng_term, r_term, q_term, Bq_term = ng_init, r_init, q_init, Bq_init
         self.r_init = r_init
         self.q_init = q_init
-        self.r_term = r_term
-        self.q_term = q_term
         m0 = array([prod(sp[:y+1])/ng_init**y for y in range(self.mls)], dtype=float)
         m1 = array([prod(sp[:y+1])/ng_term**y for y in range(self.mls)], dtype=float)
         self.pop = array([m1*ng_term**t for t in range(T)], dtype=float)
@@ -218,22 +216,21 @@ class state:
         self.b = self.theta*self.w*self.L/self.pr
         self.Bq = self.phi*self.Bq + (1-self.phi)*self.Bq1
         self.q = self.q*(1+self.eps*(self.Hd-self.Hs))
-        rmin = min(self.r_init,self.r_term)-0.04
-        rmax = max(self.r_init,self.r_term)+0.04
-        qmin = min(self.q_init,self.q_term)-4
-        qmax = max(self.q_init,self.q_term)+4
         if self.T > 1:
             r0 = self.r
             q0 = self.q
             if self.filter_on == 1:
+<<<<<<< HEAD
                 r1 = concatenate((self.r_init*ones(30),r0))
                 q1 = concatenate((self.q_init*ones(30),q0))
                 self.r = savgol_filter(r1, self.savgol_windows, self.savgol_order)[30:]
                 self.q = savgol_filter(q1, self.savgol_windows, self.savgol_order)[30:]
-                # r1 = concatenate((self.r_init*ones(40),r0))
-                # q1 = concatenate((self.q_init*ones(40),q0))
-                # self.r = savgol_filter(r1, self.savgol_windows, self.savgol_order)[40:]
-                # self.q = savgol_filter(q1, self.savgol_windows, self.savgol_order)[40:]
+=======
+                r1 = concatenate((self.r_init*ones(40),r0))
+                q1 = concatenate((self.q_init*ones(40),q0))
+                self.r = savgol_filter(r1, self.savgol_windows, self.savgol_order)[40:]
+                self.q = savgol_filter(q1, self.savgol_windows, self.savgol_order)[40:]
+>>>>>>> origin/master
                 # self.r = savgol_filter(r0, self.savgol_windows, self.savgol_order)
                 # self.q = savgol_filter(q0, self.savgol_windows, self.savgol_order)
             title = "Transition Paths after %i iterations"%(n)
@@ -267,8 +264,8 @@ class state:
             ax4.legend(prop={'size':7})
             ax1.axis([0, self.T, 20, 120])
             ax2.axis([0, self.T, 8, 20])
-            ax3.axis([0, self.T, rmin, rmax])
-            ax4.axis([0, self.T, qmin, qmax])
+            ax3.axis([0, self.T, 0.02, 0.08])
+            ax4.axis([0, self.T, 2, 8])
             ax.set_title('Transition over %i periods'%(self.T), y=1.08)
             ax1.set_title('Liquid Asset')
             ax2.set_title('House Demand')
@@ -280,7 +277,6 @@ class state:
                 path = '/Users/hyunchangyi/GitHub/Huggett/Figs'
             fullpath = os.path.join(path, filename)
             fig.savefig(fullpath)
-            plt.close()
         self.prices[0] = self.r
         self.prices[1] = self.w
         self.prices[3] = self.b
@@ -307,8 +303,7 @@ class state:
 
     def print_prices(self, n=0, t=0):
         print "n=%2i"%(n)," t=%3i"%(t),"r=%2.2f%%"%(self.r[t]*100),"Pop.=%3.1f"%(sum(self.pop[t])),\
-              "Ks=%3.1f,"%(self.K1[t]),"q=%2.2f,"%(self.q[t]),\
-              "Hd=%3.1f%%,"%((self.Hd[t]-self.Hs[t])/self.Hs[t]*100),\
+              "Ks=%3.1f,"%(self.K1[t]),"q=%2.2f,"%(self.q[t]),"edH=%3.2f,"%(self.Hd[t]-self.Hs[t]),\
               "Bq=%2.2f," %(self.Bq1[t])
 
 
@@ -408,7 +403,6 @@ class state:
         fig.savefig(fullpath)
         # ax4.axis([0, 80, 0, 1.1])
         # plt.show()
-        plt.close()
 
 
 class cohort:
@@ -588,8 +582,8 @@ def tran(params, k_i, c_i, k_t, c_t, N=5):
 
 if __name__ == '__main__':
     start_time = datetime.now()
-    par = params(psi=0.5, delta=0.08, aN=100, aL=-10, aH=40,
-            Hs=0.3, hN=7, tol=0.001, phi=0.75, eps=0.075, tcost=0.02, gs=2.0,
+    par = params(psi=0.2, delta=0.08, aN=40, aL=-10, aH=40,
+            Hs=0.3, hN=3, tol=0.001, phi=0.75, eps=0.075, tcost=0.02, gs=2.0,
             alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3,
             savgol_windows=41, savgol_order=1, filter_on=1,
             beta=0.994, sigma=1.5, dti=0.5, ltv=0.7)
@@ -600,11 +594,11 @@ if __name__ == '__main__':
     par.pg=1.0
     k1, c1 = fss(par, N=30)
 
-    par.pg, par.pg_change, par.T = 1.012, -0.012, 250
-    kt, mu = tran(par, k0, c0, k1, c1, N=10)
+    par.pg, par.pg_change, par.T = 1.012, -0.012, 220
+    kt, mu = tran(par, k0, c0, k1, c1, N=3)
 
     for t in linspace(0,par.T-1,10).astype(int):
-        kt.plot(t=t,yi=10,ny=5)
+        kt.plot(t=t)
 
     end_time = datetime.now()
     print 'Total Time: {}'.format(end_time - start_time)
