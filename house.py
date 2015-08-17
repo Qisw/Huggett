@@ -13,7 +13,7 @@ import statsmodels.api as sm
 from numpy import linspace, mean, array, zeros, absolute, loadtxt, dot, prod, int,\
                     genfromtxt, sum, argmax, tile, concatenate, ones, log, \
                     unravel_index, cumsum, meshgrid, atleast_2d, where, newaxis,\
-                    maximum
+                    maximum, repeat
 from matplotlib import pyplot as plt
 from datetime import datetime
 import time
@@ -53,19 +53,20 @@ class params:
         self.hN = hN
         self.pg, self.pg_change = pg, pg_change
         self.Hs = Hs
-        """ LOAD PARAMETERS : SURVIVAL PROB., PRODUCTIVITY TRANSITION PROB. AND ... """
+        """ LOAD PARAMETERS : SURVIVAL PROB., INITIAL DIST. OF PRODUCTIVITY,
+        PRODUCTIVITY TRANSITION PROB. AND PRODUCTIVITY """
         if system() == 'Windows':
-            self.sp = sp = loadtxt('parameters\sp.txt', delimiter='\n')  # survival probability
-            self.muz = genfromtxt('parameters\muz.csv', delimiter=',')  # initial distribution of productivity
-            self.pi = genfromtxt('parameters\pi.csv', delimiter=',')  # productivity transition probability
+            self.sp = sp = loadtxt('parameters\sp.txt', delimiter='\n')
+            self.muz = genfromtxt('parameters\muz.csv', delimiter=',')
+            self.pi = genfromtxt('parameters\pi.csv', delimiter=',')
             self.ef = genfromtxt('parameters\ef.csv', delimiter=',')
         else:
-            self.sp = sp = loadtxt('parameters/sp.txt', delimiter='\n')  # survival probability
-            self.muz = genfromtxt('parameters/muz.csv', delimiter=',')  # initial distribution of productivity
-            self.pi = genfromtxt('parameters/pi.csv', delimiter=',')  # productivity transition probability
+            self.sp = sp = loadtxt('parameters/sp.txt', delimiter='\n')
+            self.muz = genfromtxt('parameters/muz.csv', delimiter=',')
+            self.pi = genfromtxt('parameters/pi.csv', delimiter=',')
             self.ef = genfromtxt('parameters/ef.csv', delimiter=',')
         self.zN = self.pi.shape[0]
-        self.mls = self.ef.shape[0]
+        self.yN = self.ef.shape[0]
         self.T = T
 
 
@@ -75,41 +76,19 @@ class params:
             print 'Finding Steady State witn tol. %2.3f... \n'%(self.tol)
         else:
             print 'Finding Transition Path over %i periods ... \n'%(self.T)
-        print 'Liquid Asset: [%i'%(self.aL),', %i]'%(self.aH),' with Grid Size %i'%(self.aN)
-        print '       House: [%2.2f'%(self.hh[0]),', %2.2f]'%(self.hh[-1]),' with Grid Size %i'%(self.hN)
+        print 'Liquid Asset: From %i'%(self.aL),'to %i'%(self.aH),\
+                ' with Grid Size %i'%(self.aN)
+        print '       House: From %2.2f'%(self.hh[0]),'to %2.2f'%(self.hh[-1]),\
+                ' with Grid Size %i'%(self.hN)
         print 'House Supply per Capita: %2.2f'%(self.Hs)
-        print 'Population Growth Rate Changes from %2.2f'%(sum(self.pg)), 'to %2.2f'%(sum(self.pg+self.pg_change))
+        print 'Population Growth Rate Changes from %2.2f'%(sum(self.pg)),\
+                'to %2.2f'%(sum(self.pg+self.pg_change))
         print '\n','psi  :%2.2f'%(self.psi), ' eps  :%2.2f'%(self.eps)\
                 , ' phi:%2.2f'%(self.phi), ' tcost:%2.2f'%(self.tcost), '\n'\
-             ,'delta:%2.2f'%(self.delta), ' alpha:%2.2f'%(self.alpha)\
-                , ' dti:%2.2f'%(self.dti), ' ltv:%2.2f'%(self.ltv), ' beta :%2.2f'%(self.beta)
+                , 'delta:%2.2f'%(self.delta), ' alpha:%2.2f'%(self.alpha)\
+                , ' dti:%2.2f'%(self.dti), ' ltv:%2.2f'%(self.ltv)\
+                , ' beta :%2.2f'%(self.beta)
         print '====================================================== \n'
-
-
-def savitzky_golay(y, window_size, order, deriv=0, rate=1):
-    import numpy as np
-    from math import factorial
-
-    try:
-        window_size = np.abs(np.int(window_size))
-        order = np.abs(np.int(order))
-    except ValueError, msg:
-        raise ValueError("window_size and order have to be of type int")
-    if window_size % 2 != 1 or window_size < 1:
-        raise TypeError("window_size size must be a positive odd number")
-    if window_size < order + 2:
-        raise TypeError("window_size is too small for the polynomials order")
-    order_range = range(order+1)
-    half_window = (window_size -1) // 2
-    # precompute coefficients
-    b = np.mat([[k**i for i in order_range] for k in range(-half_window, half_window+1)])
-    m = np.linalg.pinv(b).A[deriv] * rate**deriv * factorial(deriv)
-    # pad the signal at the extremes with
-    # values taken from the signal itself
-    firstvals = y[0] - np.abs( y[1:half_window+1][::-1] - y[0] )
-    lastvals = y[-1] + np.abs(y[-half_window-1:-1][::-1] - y[-1])
-    y = np.concatenate((firstvals, y, lastvals))
-    return np.convolve( m[::-1], y, mode='valid')
 
 
 class state:
@@ -139,7 +118,7 @@ class state:
         self.muz = muz = params.muz
         self.ef = ef = params.ef
         self.zN = zN = params.zN
-        self.mls = mls = params.mls
+        self.yN = yN = params.yN
         self.ng_init = ng_init = params.pg
         self.ng_term = ng_term = params.pg + params.pg_change
         self.savgol_windows, self.savgol_order = params.savgol_windows, params.savgol_order
@@ -152,10 +131,10 @@ class state:
         self.q_init = q_init
         self.r_term = r_term
         self.q_term = q_term
-        m0 = array([prod(sp[:y+1])/ng_init**y for y in range(self.mls)], dtype=float)
-        m1 = array([prod(sp[:y+1])/ng_term**y for y in range(self.mls)], dtype=float)
+        m0 = array([prod(sp[:y+1])/ng_init**y for y in range(self.yN)], dtype=float)
+        m1 = array([prod(sp[:y+1])/ng_term**y for y in range(self.yN)], dtype=float)
         self.pop = array([m1*ng_term**t for t in range(T)], dtype=float)
-        for t in range(min(T,self.mls-1)):
+        for t in range(min(T,self.yN-1)):
             self.pop[t,t+1:] = m0[t+1:]*ng_init**t
         """Construct containers for market prices, tax rates, pension, bequest"""
         self.Hs = [params.Hs*sum(self.pop[t]) for t in range(T)]
@@ -164,15 +143,15 @@ class state:
         self.r = r_term*ones(T)
         self.q = q_term*ones(T)
         self.Bq = Bq_term*ones(T)
-        self.r[0:T-mls] = linspace(r_init,r_term,T-mls)
-        self.q[0:T-mls] = linspace(q_init,q_term,T-mls)
-        self.Bq[0:T-mls] = linspace(Bq_init,Bq_term,T-mls)
+        self.r[0:T-yN] = linspace(r_init,r_term,T-yN)
+        self.q[0:T-yN] = linspace(q_init,q_term,T-yN)
+        self.Bq[0:T-yN] = linspace(Bq_init,Bq_term,T-yN)
         self.pr, self.L, self.K, self.w, self.b = [zeros(T) for i in range(5)]
         for t in range(T):
             # pr = population of retired agents
             self.pr[t] = sum(self.pop[t,45:])
             # L = labor supply in efficiency unit
-            self.L[t] = sum([muz[y].dot(ef[y])*self.pop[t,y] for y in range(mls)])
+            self.L[t] = sum([muz[y].dot(ef[y])*self.pop[t,y] for y in range(yN)])
             self.K[t] = ((self.r[t]+delta)/alpha)**(1.0/(alpha-1.0))*self.L[t]
             self.w[t] = ((self.r[t]+delta)/alpha)**(alpha/(alpha-1.0))*(1.0-alpha)
             self.b[t] = self.theta[t]*self.w[t]*self.L[t]/self.pr[t]
@@ -183,22 +162,23 @@ class state:
         """ PRICES, PENSION BENEFITS, BEQUESTS AND TAXES
         that are observed by households """
         self.prices = array([self.r, self.w, self.q, self.b, self.Bq, self.theta, self.tau])
-        self.mu = [zeros((mls,hN,zN,aN)) for t in range(T)]
+        self.mu = [zeros((yN,hN,zN,aN)) for t in range(T)]
 
 
     def aggregate(self, vmu):
         """Aggregate Capital, Labor in Efficiency unit and Bequest over all cohorts"""
-        T, mls, alpha, delta, zeta = self.T, self.mls, self.alpha, self.delta, self.zeta
-        aa, pop, sp, zN, aN, hN, hh = self.aa, self.pop, self.sp, self.zN, self.aN, self.hN, self.hh
+        T, yN, alpha, delta, zeta = self.T, self.yN, self.alpha, self.delta, self.zeta
+        aa, pop, sp, zN, = self.aa, self.pop, self.sp, self.zN,
+        aN, hN, hh = self.aN, self.hN, self.hh
         spr = (1-sp)/sp
         my = lambda x: x if x < T-1 else -1
-        self.mu = [array(vmu[t]).reshape(mls,hN,zN,aN) for t in range(len(vmu))]
+        self.mu = [array(vmu[t]).reshape(yN,hN,zN,aN) for t in range(len(vmu))]
         self.Hd = zeros(T)
         self.K1 = zeros(T)
         self.Bq1 = zeros(T)
         """Aggregate all cohorts' capital and labor supply at each year"""
         for t in range(T):
-            for y in range(mls):
+            for y in range(yN):
                 k1 = sum(self.mu[my(t+y)][-(y+1)],(0,1)).dot(aa)*pop[t,-(y+1)]
                 hd = sum(self.mu[my(t+y)][-(y+1)],(1,2)).dot(hh)*pop[t,-(y+1)]
                 bq1 = (k1 + hd*self.q[t])*spr[-(y+1)]*(1-zeta)/sum(pop[t])
@@ -230,12 +210,6 @@ class state:
                 q1 = concatenate((self.q_init*ones(30),q0))
                 self.r = savgol_filter(r1, self.savgol_windows, self.savgol_order)[30:]
                 self.q = savgol_filter(q1, self.savgol_windows, self.savgol_order)[30:]
-                # r1 = concatenate((self.r_init*ones(40),r0))
-                # q1 = concatenate((self.q_init*ones(40),q0))
-                # self.r = savgol_filter(r1, self.savgol_windows, self.savgol_order)[40:]
-                # self.q = savgol_filter(q1, self.savgol_windows, self.savgol_order)[40:]
-                # self.r = savgol_filter(r0, self.savgol_windows, self.savgol_order)
-                # self.q = savgol_filter(q0, self.savgol_windows, self.savgol_order)
             title = "Transition Paths after %i iterations"%(n)
             filename = title + '.png'
             fig = plt.figure(facecolor='white')
@@ -288,25 +262,14 @@ class state:
         self.prices[2] = self.q
 
 
-    def update_Bq(self):
-        """ Update the amount of bequest given to households """
-        self.Bq = self.phi*self.Bq + (1-self.phi)*self.Bq1
-        self.prices[4] = self.Bq
-
-
-    def update_q(self):
-        """ Update the amount of bequest given to households """
-        self.q = self.q*(1+self.eps*(self.Hd-self.Hs))
-        self.prices[2] = self.q
-
-
     def converged(self):
         return max(absolute(self.K - self.K1))/max(self.K) < self.tol \
                 and max(absolute(self.Hd - self.Hs))/max(self.Hd) < self.tol
 
 
     def print_prices(self, n=0, t=0):
-        print "n=%2i"%(n)," t=%3i"%(t),"r=%2.2f%%"%(self.r[t]*100),"Pop.=%3.1f"%(sum(self.pop[t])),\
+        print "n=%2i"%(n)," t=%3i"%(t),"r=%2.2f%%"%(self.r[t]*100),\
+              "Pop.=%3.1f"%(sum(self.pop[t])),\
               "Ks=%3.1f,"%(self.K1[t]),"q=%2.2f,"%(self.q[t]),\
               "Hd=%3.1f%%,"%((self.Hd[t]-self.Hs[t])/self.Hs[t]*100),\
               "Bq=%2.2f," %(self.Bq1[t])
@@ -314,18 +277,18 @@ class state:
 
     def plot(self, t=0, yi=0, yt=78, ny=7):
         """plot life-path of aggregate capital accumulation and house demand"""
-        mls = self.mls
+        yN = self.yN
         pop, aa, hh, aN, hN = self.pop, self.aa, self.hh, self.aN, self.hN
         mu = self.mu[t]
-        a = zeros(mls)
-        h = zeros(mls)
-        ap = zeros(mls)
-        hp = zeros(mls)
+        a = zeros(yN)
+        h = zeros(yN)
+        ap = zeros(yN)
+        hp = zeros(yN)
         al = zeros(aN)
         hl = zeros(hN)
         ah = zeros((hN,aN))
         """Aggregate all cohorts' capital and labor supply at each year"""
-        for y in range(mls):
+        for y in range(yN):
             ap[y] = sum(mu[y],(0,1)).dot(aa)*pop[t,y]
             hp[y] = sum(mu[y],(1,2)).dot(hh)*pop[t,y]
             a[y] = sum(mu[y],(0,1)).dot(aa)
@@ -338,9 +301,10 @@ class state:
         w = hh[:,newaxis]*self.q[t] + aa[newaxis,:]
         unsorted = array((ah.ravel(),w.ravel())).T
         ah, w = unsorted[unsorted[:,1].argsort()].T
-        title = 'psi=%2.2f'%(self.psi) + ' aN=%2.2f'%(self.aN) +' hN=%2.2f'%(self.hN) +\
-                ' r=%2.2f%%'%(self.r[t]*100) + ' q=%2.2f'%(self.q[t]) + \
-                ' K=%2.1f'%(self.K[t]) + ' Hd=%2.1f'%(self.Hd[t])
+        title = 'psi=%2.2f'%(self.psi) + ' aN=%2.2f'%(self.aN) \
+                + ' hN=%2.2f'%(self.hN) + ' r=%2.2f%%'%(self.r[t]*100) \
+                + ' q=%2.2f'%(self.q[t]) + ' K=%2.1f'%(self.K[t]) \
+                + ' Hd=%2.1f'%(self.Hd[t])
         if self.T == 1:
             title = 'In SS, ' + title
         else:
@@ -356,17 +320,18 @@ class state:
         ax4 = fig.add_subplot(235)
         ax5 = fig.add_subplot(233)
         ax6 = fig.add_subplot(236)
-        fig.subplots_adjust(hspace=.5, wspace=.3, left=None, right=None, top=None,
-                                bottom=None)
+        fig.subplots_adjust(hspace=.5, wspace=.3, left=None, right=None, \
+                                                        top=None, bottom=None)
         ax.spines['top'].set_color('none')
         ax.spines['bottom'].set_color('none')
         ax.spines['left'].set_color('none')
         ax.spines['right'].set_color('none')
-        ax.tick_params(labelcolor='w', top='off', bottom='off', left='off', right='off')
-        ax1.plot(range(mls),ap,label='aggregate')
-        ax1.plot(range(mls),a,label='per capita')
-        ax2.plot(range(mls),hp,label='aggregate')
-        ax2.plot(range(mls),h,label='per capita')
+        ax.tick_params(labelcolor='w', top='off', bottom='off', \
+                                                        left='off', right='off')
+        ax1.plot(range(yN),ap,label='aggregate')
+        ax1.plot(range(yN),a,label='per capita')
+        ax2.plot(range(yN),hp,label='aggregate')
+        ax2.plot(range(yN),h,label='per capita')
         for y in linspace(yi,yt,ny).astype(int):
             ax3.plot(aa,sum(mu[y],(0,1)),label='age %i'%(y))
         for y in linspace(yi,yt,ny).astype(int):
@@ -417,10 +382,11 @@ class cohort:
     def __init__(self, params, y=-1, a0 = 0):
         self.beta, self.sigma, self.psi = params.beta, params.sigma, params.psi
         self.R, self.W, self.y = params.R, params.W, y
-        # self.mls = mls = (y+1 if (y >= 0) and (y <= W+R-2) else W+R) # mls is maximum life span
+        # self.yN = yN = (y+1 if (y >= 0) and (y <= W+R-2) else W+R)
         self.aN = aN = params.aN
         self.aa = aa = params.aa
-        self.a0_id = where(aa >= 0)[0][0]   # agents start their life with asset aa[a0_id]
+        # agents start their life with asset aa[a0_id]
+        self.a0_id = where(aa >= 0)[0][0]
         self.hh = hh = params.hh
         self.hN = hN = params.hN
         self.tol, self.neg = params.tol, params.neg
@@ -433,17 +399,17 @@ class cohort:
         self.muz = muz = params.muz
         self.ef = ef = params.ef
         self.zN = zN = params.zN
-        self.mls = mls = params.mls
+        self.yN = yN = params.yN
         """ container for value function and expected value function """
-        # v[y,h,j,i] is the value of an y-yrs-old agent with asset i and productity j, house h
-        self.v = zeros((mls,hN,zN,aN))
+        # v[y,h,j,i] is the value of y-yrs-old agent with asset i and prod. j, house h
+        self.v = zeros((yN,hN,zN,aN))
         """ container for policy functions """
-        self.a = zeros((mls,hN,zN,aN))
-        self.h = zeros((mls,hN,zN,aN))
-        self.c = zeros((mls,hN,zN,aN))
+        self.a = zeros((yN,hN,zN,aN))
+        self.h = zeros((yN,hN,zN,aN))
+        self.c = zeros((yN,hN,zN,aN))
         """ distribution of agents w.r.t. age, productivity and asset
         for each age, distribution over all productivities and assets add up to 1 """
-        self.vmu = zeros(mls*hN*zN*aN)
+        self.vmu = zeros(yN*hN*zN*aN)
 
 
     def optimalpolicy(self, prices):
@@ -451,18 +417,18 @@ class cohort:
         value and decision functions are calculated ***BACKWARD*** """
         aa, hh = self.aa, self.hh
         t = prices.shape[1]
-        if t < self.mls:
-            d = self.mls - t
-            prices = concatenate((tile(array([prices[:,0]]).T,(1,d)),prices), axis=1)
-        [r, w, q, b, Bq, theta, tau] = prices
-        ef, mls, R, aN, zN, hN = self.ef, self.mls, self.R, self.aN, self.zN, self.hN
+        if t < self.yN:
+            d = self.yN - t
+            # prices = concatenate((tile(array([prices[:,0]]).T,(1,d)),prices), axis=1)
+            prices = concatenate((repeat(prices[:,0][:,newaxis],d,axis=1),prices), axis=1)
+        r, w, q, b, Bq, theta, tau = prices
+        ef, yN, R, aN, zN, hN = self.ef, self.yN, self.R, self.aN, self.zN, self.hN
         sigma, psi, beta = self.sigma, self.psi, self.beta
         sp, pi, tcost, ltv, neg = self.sp, self.pi, self.tcost, self.ltv, self.neg
         # ev[y,nh,j,ni] is the expected value when next period asset ni and house hi
-        ev = zeros((mls,hN,zN,aN))
+        ev = zeros((yN,hN,zN,aN))
         """ inline functions: utility and income adjustment by trading house """
         util = lambda c, h: (c*h**psi)**(1-self.sigma)/(1-self.sigma)
-        # util = lambda c, h: self.neg if c <= 0 else (c*h**psi)**(1-self.sigma)/(1-self.sigma)
         hinc = lambda h, nh, q: (h-nh)*q - tcost*h*q*(h!=nh)
         """ y = -1 : just before the agent dies """
         for h in range(hN):
@@ -474,29 +440,34 @@ class cohort:
                 self.v[-1,h,z] = util(c,hh[h])
             ev[-1,h] = pi.dot(self.v[-1,h])
         """ y = -2, -3,..., -60 """
-        for y in range(-2, -(mls+1), -1):
+        for y in range(-2, -(yN+1), -1):
             for h in range(hN):
                 for z in range(zN):
                     vt = zeros((hN,aN,aN))
                     for nh in range(hN):
                         p = aa*(1+(1-tau[y])*r[y]) + b[y]*(y>=-R) \
-                                + w[y]*ef[y,z]*(1-theta[y]-tau[y]) + Bq[y]  \
+                                + w[y]*ef[y,z]*(1-theta[y]-tau[y]) + Bq[y] \
                                 + hinc(hh[h],hh[nh],q[y])
                         c = p[:,newaxis] - aa
                         c[c<=0.0] = 1e-10
-                        vt[nh] = util(c,hh[h]) + beta*sp[y+1]*ev[y+1,nh,z] + neg*(-ltv*hh[nh]*q[y]>aa)
+                        vt[nh] = util(c,hh[h]) + beta*sp[y+1]*ev[y+1,nh,z] \
+                                    + neg*(-ltv*hh[nh]*q[y]>aa)
                     for a in range(aN):
                         """find optimal pairs of house and asset """
                         self.h[y,h,z,a], self.a[y,h,z,a] \
                             = unravel_index(vt[:,a,:].argmax(),vt[:,a,:].shape)
                         self.v[y,h,z,a] = vt[self.h[y,h,z,a],a,self.a[y,h,z,a]]
-                        # print 'optimal nh and na:', y,h,self.h[y,h,z,a], self.a[y,h,z,a]
+                        self.c[y,h,z,a] = aa[a]*(1+(1-tau[y])*r[y]) \
+                                            + b[y]*(y>=-R) + Bq[y] \
+                                            + w[y]*ef[y,z]*(1-theta[y]-tau[y]) \
+                                            + hinc(hh[h],hh[self.h[y,h,z,a]],q[y]) \
+                                            - aa[self.a[y,h,z,a]]
                 ev[y,h] = pi.dot(self.v[y,h])
         """ find distribution of agents w.r.t. age, productivity and asset """
         self.vmu *= 0
-        mu = self.vmu.reshape(mls,hN,zN,aN)
+        mu = self.vmu.reshape(yN,hN,zN,aN)
         mu[0,0,:,self.a0_id] = self.muz[0]
-        for y in range(1,mls):
+        for y in range(1,yN):
             for h in range(hN):
                 for z in range(zN):
                     for a in range(aN):
@@ -529,36 +500,35 @@ def fss(params, N=20):
     return k, c
 
 
-#병렬처리를 위한 for loop 내 로직 분리
+# separate the procedure of finding optimal policy of each cohort for Parallel Process
 def transition_sub1(t,mu,prices,mu_t,params):
     c = cohort(params)
     T = params.T
-    mls = params.mls
+    yN = params.yN
     if t < T-1:
-        c.optimalpolicy(prices.T[max(t-mls+1,0):t+1].T)
+        c.optimalpolicy(prices.T[max(t-yN+1,0):t+1].T)
     else:
         c.vmu = mu_t
-    for i in range(c.mls*c.hN*c.zN*c.aN):
+    for i in range(c.yN*c.hN*c.zN*c.aN):
         mu[i] = c.vmu[i]
 
 
-def tran(params, k_i, c_i, k_t, c_t, N=5):
+def tran(params, k0, c0, k1, c1, N=5):
     params.print_params()
-    TP = params.T
-    k_tp = state(params, r_init=k_i.r, r_term=k_t.r, q_init=k_i.q, q_term=k_t.q,
-                            Bq_init=k_i.Bq, Bq_term=k_t.Bq)
-    mu_len = params.mls*params.hN*params.zN*params.aN
-    """Generate mu of TP cohorts who die in t = 0,...,T-1 with initial asset g0.apath[-t-1]"""
-    mu_tp = [RawArray(c_double, mu_len) for t in range(TP)]
+    T = params.T
+    kt = state(params, r_init=k0.r, r_term=k1.r, q_init=k0.q, q_term=k1.q,
+                            Bq_init=k0.Bq, Bq_term=k1.Bq)
+    mu_len = params.yN*params.hN*params.zN*params.aN
+    """Generate mu of T cohorts who die in t = 0,...,T-1 with initial asset g0.apath[-t-1]"""
+    mt = [RawArray(c_double, mu_len) for t in range(T)]
     for n in range(N):
         start_time = datetime.now()
         print str(n+1)+'th loop started at {} \n ...'.format(start_time)
         jobs = []
-        for t, mu in enumerate(mu_tp):
-            p = Process(target=transition_sub1, args=(t,mu,k_tp.prices,c_t.vmu,params))
+        for t, mu in enumerate(mt):
+            p = Process(target=transition_sub1, args=(t,mu,kt.prices,c1.vmu,params))
             p.start()
             jobs.append(p)
-            #병렬처리 개수 지정 20이면 20개 루프를 동시에 병렬로 처리
             if len(jobs) % 8 == 0:
                 for p in jobs:
                     p.join()
@@ -566,42 +536,37 @@ def tran(params, k_i, c_i, k_t, c_t, N=5):
         if len(jobs) > 0:
             for p in jobs:
                 p.join()
-        k_tp.aggregate(mu_tp)
-        for t in linspace(0,TP-1,20).astype(int):
-            k_tp.print_prices(n=n+1,t=t)
-        k_tp.update_prices(n=n+1)
+        kt.aggregate(mt)
+        for t in linspace(0,T-1,20).astype(int):
+            kt.print_prices(n=n+1,t=t)
+        kt.update_prices(n=n+1)
         end_time = datetime.now()
-        print '...\n'+str(n+1)+'th loop completed, it took {}\n'.format(end_time - start_time)
-        if k_tp.converged():
+        print 'this loop took {}\n'.format(end_time - start_time)
+        if kt.converged():
             print 'Transition Path Converged! in', n+1,'iterations.'
             break
         if n >= N-1:
             print 'Transition Path Not Converged! in', n+1,'iterations.'
             break
-    return k_tp, mu_tp
-
-
-# def smoother(y, w=50):
-#     L = len(y)
-#     y[1] = mean(y[])
+    return kt, mt
 
 
 if __name__ == '__main__':
     start_time = datetime.now()
-    par = params(psi=0.5, delta=0.08, aN=100, aL=-10, aH=40,
-            Hs=0.3, hN=7, tol=0.001, phi=0.75, eps=0.075, tcost=0.02, gs=2.0,
+    par = params(psi=0.5, delta=0.08, aN=20, aL=-10, aH=40,
+            Hs=0.3, hN=2, tol=0.001, phi=0.75, eps=0.075, tcost=0.02, gs=2.0,
             alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3,
             savgol_windows=41, savgol_order=1, filter_on=1,
             beta=0.994, sigma=1.5, dti=0.5, ltv=0.7)
 
     par.pg=1.012
-    k0, c0 = fss(par, N=30)
+    k0, c0 = fss(par, N=3)
 
     par.pg=1.0
-    k1, c1 = fss(par, N=30)
+    k1, c1 = fss(par, N=3)
 
     par.pg, par.pg_change, par.T = 1.012, -0.012, 250
-    kt, mu = tran(par, k0, c0, k1, c1, N=10)
+    kt, mu = tran(par, k0, c0, k1, c1, N=1)
 
     for t in linspace(0,par.T-1,10).astype(int):
         kt.plot(t=t,yi=10,ny=5)
