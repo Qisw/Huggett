@@ -269,8 +269,8 @@ class state:
             ax2.axis([0, self.T, 8, 25])
             ax3.axis([0, self.T, rmin, rmax])
             ax4.axis([0, self.T, qmin, qmax])
-            ax5.axis([0, self.T, 0, 0.6])
-            ax6.axis([0, self.T, 0, 0.2])
+            ax5.axis([0, self.T, 0, 1.0])
+            ax6.axis([0, self.T, 0.0, 0.4])
             ax.set_title('Transition over %i periods'%(self.T), y=1.08)
             ax1.set_title('Liquid Asset')
             ax2.set_title('House Demand')
@@ -598,17 +598,17 @@ def tran(params, k0, c0, k1, c1, N=5):
 
 if __name__ == '__main__':
     start_time = datetime.now()
-    par = params(psi=0.5, delta=0.08, aN=50, aL=-10, aH=50,
-            Hs=0.3, hN=5, tol=0.005, phi=0.75, eps=0.075, tcost=0.02, gs=2.0,
+    par = params(psi=0.5, delta=0.08, aN=70, aL=-10, aH=50,
+            Hs=0.3, hN=7, tol=0.002, phi=0.75, eps=0.075, tcost=0.02, gs=2.0,
             alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3,
             savgol_windows=41, savgol_order=1, filter_on=1,
             beta=0.994, sigma=1.5, dti=0.5, ltv=0.7)
 
     par.pg=1.012
-    k0, c0 = fss(par, N=10)
+    k0, c0 = fss(par, N=30)
 
     par.pg=1.0
-    k1, c1 = fss(par, N=10)
+    k1, c1 = fss(par, N=30)
 
     par.pg, par.pg_change, par.T = 1.012, -0.012, 220
     kt, mu, vc = tran(par, k0, c0, k1, c1, N=10)
