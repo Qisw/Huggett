@@ -13,7 +13,7 @@ import statsmodels.api as sm
 from numpy import linspace, mean, array, zeros, absolute, loadtxt, dot, prod, int,\
                     genfromtxt, sum, argmax, tile, concatenate, ones, log, \
                     unravel_index, cumsum, meshgrid, atleast_2d, where, newaxis,\
-                    maximum, repeat
+                    maximum, minimum, repeat
 from matplotlib import pyplot as plt
 from datetime import datetime
 import time
@@ -91,6 +91,10 @@ class params:
         print '====================================================== \n'
 
 
+
+
+
+
 class state:
     """ This class is just a "struct" to hold the collection of primitives defining
     an economy in which one or multiple generations live """
@@ -159,13 +163,18 @@ class state:
         self.r1 = zeros(T)
         self.K1 = zeros(T)
         self.Bq1 = zeros(T)
+        self.Prod = zeros(T)
+        self.Cons = zeros(T)
+        self.Debt = zeros(T)
+        self.DI = zeros(T)
         """ PRICES, PENSION BENEFITS, BEQUESTS AND TAXES
         that are observed by households """
         self.prices = array([self.r, self.w, self.q, self.b, self.Bq, self.theta, self.tau])
         self.mu = [zeros((yN,hN,zN,aN)) for t in range(T)]
+        self.c = [zeros((yN,hN,zN,aN)) for t in range(T)]
 
 
-    def aggregate(self, vmu):
+    def aggregate(self, vmu, vc):
         """Aggregate Capital, Labor in Efficiency unit and Bequest over all cohorts"""
         T, yN, alpha, delta, zeta = self.T, self.yN, self.alpha, self.delta, self.zeta
         aa, pop, sp, zN, = self.aa, self.pop, self.sp, self.zN,
@@ -173,19 +182,29 @@ class state:
         spr = (1-sp)/sp
         my = lambda x: x if x < T-1 else -1
         self.mu = [array(vmu[t]).reshape(yN,hN,zN,aN) for t in range(len(vmu))]
+        self.c = [array(vc[t]).reshape(yN,hN,zN,aN) for t in range(len(vc))]
         self.Hd = zeros(T)
         self.K1 = zeros(T)
         self.Bq1 = zeros(T)
+        self.Prod = zeros(T)
+        self.Cons = zeros(T)
+        self.Debt = zeros(T)
         """Aggregate all cohorts' capital and labor supply at each year"""
         for t in range(T):
             for y in range(yN):
                 k1 = sum(self.mu[my(t+y)][-(y+1)],(0,1)).dot(aa)*pop[t,-(y+1)]
                 hd = sum(self.mu[my(t+y)][-(y+1)],(1,2)).dot(hh)*pop[t,-(y+1)]
                 bq1 = (k1 + hd*self.q[t])*spr[-(y+1)]*(1-zeta)/sum(pop[t])
+                cons = sum(self.mu[my(t+y)][-(y+1)]*self.c[my(t+y)][-(y+1)])*pop[t,-(y+1)]
+                debt = sum(self.mu[my(t+y)][-(y+1)],(0,1)).dot(minimum(aa,0))*pop[t,-(y+1)]
                 self.K1[t] += k1
                 self.Hd[t] += hd
                 self.Bq1[t] += bq1
+                self.Cons[t] += cons
+                self.Debt[t] += debt
         self.r1 = alpha*(self.K1/self.L)**(alpha-1.0)-delta
+        self.Prod = self.K1**alpha*self.L**(1.0-alpha)
+        self.DI = self.K1*(1-tau)*r + Bq*pop + w*self.L*(1-tau)
 
 
     def update_prices(self, n=0):
@@ -215,10 +234,12 @@ class state:
             fig = plt.figure(facecolor='white')
             plt.rcParams.update({'font.size': 8})
             ax = fig.add_subplot(111)
-            ax1 = fig.add_subplot(221)
-            ax2 = fig.add_subplot(222)
-            ax3 = fig.add_subplot(223)
-            ax4 = fig.add_subplot(224)
+            ax1 = fig.add_subplot(231)
+            ax2 = fig.add_subplot(232)
+            ax3 = fig.add_subplot(234)
+            ax4 = fig.add_subplot(235)
+            ax3 = fig.add_subplot(233)
+            ax4 = fig.add_subplot(236)
             fig.subplots_adjust(hspace=.5, wspace=.3, left=None, right=None,
                                     top=None, bottom=None)
             ax.spines['top'].set_color('none')
@@ -236,9 +257,14 @@ class state:
             ax4.plot(self.q,label='smoothed')
             ax4.plot(q0,label='updated')
             ax4.plot(0,self.q_init,'o',label='initial')
+            ax5.plot(self.Prod/self.pop,label='per capita Production')
+            ax5.plot(self.Cons/self.pop,label='per capita Consumption')
+            ax6.plot((self.DI-self.Cons)/self.DI)
             ax2.legend(prop={'size':7})
             ax3.legend(prop={'size':7})
             ax4.legend(prop={'size':7})
+            ax5.legend(prop={'size':7})
+            # ax6.legend(prop={'size':7})
             ax1.axis([0, self.T, 20, 120])
             ax2.axis([0, self.T, 8, 20])
             ax3.axis([0, self.T, rmin, rmax])
@@ -248,6 +274,8 @@ class state:
             ax2.set_title('House Demand')
             ax3.set_title('Interest Rate')
             ax4.set_title('House Price')
+            ax5.set_title('Production and Consumption')
+            ax6.set_title('Saving Rate')
             if system() == 'Windows':
                 path = 'D:\Huggett\Figs'
             else:
@@ -376,6 +404,10 @@ class state:
         plt.close()
 
 
+
+
+
+
 class cohort:
     """ This class is just a "struct" to hold the collection of primitives defining
     a generation """
@@ -403,13 +435,15 @@ class cohort:
         """ container for value function and expected value function """
         # v[y,h,j,i] is the value of y-yrs-old agent with asset i and prod. j, house h
         self.v = zeros((yN,hN,zN,aN))
-        """ container for policy functions """
+        """ container for policy functions,
+        which are used to calculate vmu and not stored """
         self.a = zeros((yN,hN,zN,aN))
         self.h = zeros((yN,hN,zN,aN))
-        self.c = zeros((yN,hN,zN,aN))
+        # self.c = zeros((yN,hN,zN,aN))
         """ distribution of agents w.r.t. age, productivity and asset
         for each age, distribution over all productivities and assets add up to 1 """
         self.vmu = zeros(yN*hN*zN*aN)
+        self.vc = zeros(yN*hN*zN*aN)
 
 
     def optimalpolicy(self, prices):
@@ -425,8 +459,10 @@ class cohort:
         ef, yN, R, aN, zN, hN = self.ef, self.yN, self.R, self.aN, self.zN, self.hN
         sigma, psi, beta = self.sigma, self.psi, self.beta
         sp, pi, tcost, ltv, neg = self.sp, self.pi, self.tcost, self.ltv, self.neg
-        # ev[y,nh,j,ni] is the expected value when next period asset ni and house hi
+        """ev[y,nh,j,ni] is the expected value when next period asset ni and house hi"""
         ev = zeros((yN,hN,zN,aN))
+        """ct is a channel to store optimal consumption in vc"""
+        ct = self.vc.reshape(yN,hN,zN,aN)
         """ inline functions: utility and income adjustment by trading house """
         util = lambda c, h: (c*h**psi)**(1-self.sigma)/(1-self.sigma)
         hinc = lambda h, nh, q: (h-nh)*q - tcost*h*q*(h!=nh)
@@ -436,7 +472,7 @@ class cohort:
                 c = aa*(1+(1-tau[-1])*r[-1]) + hinc(hh[h],hh[0],q[-1])\
                         + w[-1]*ef[-1,z]*(1-theta[-1]-tau[-1]) + b[-1] + Bq[-1]
                 c[c<=0.0] = 1e-10
-                self.c[-1,h,z] = c
+                ct[-1,h,z] = c
                 self.v[-1,h,z] = util(c,hh[h])
             ev[-1,h] = pi.dot(self.v[-1,h])
         """ y = -2, -3,..., -60 """
@@ -457,11 +493,10 @@ class cohort:
                         self.h[y,h,z,a], self.a[y,h,z,a] \
                             = unravel_index(vt[:,a,:].argmax(),vt[:,a,:].shape)
                         self.v[y,h,z,a] = vt[self.h[y,h,z,a],a,self.a[y,h,z,a]]
-                        self.c[y,h,z,a] = aa[a]*(1+(1-tau[y])*r[y]) \
-                                            + b[y]*(y>=-R) + Bq[y] \
-                                            + w[y]*ef[y,z]*(1-theta[y]-tau[y]) \
-                                            + hinc(hh[h],hh[self.h[y,h,z,a]],q[y]) \
-                                            - aa[self.a[y,h,z,a]]
+                        ct[y,h,z,a] = aa[a]*(1+(1-tau[y])*r[y]) + b[y]*(y>=-R) \
+                                        + Bq[y] + w[y]*ef[y,z]*(1-theta[y]-tau[y]) \
+                                        + hinc(hh[h],hh[self.h[y,h,z,a]],q[y]) \
+                                        - aa[self.a[y,h,z,a]]
                 ev[y,h] = pi.dot(self.v[y,h])
         """ find distribution of agents w.r.t. age, productivity and asset """
         self.vmu *= 0
@@ -474,9 +509,12 @@ class cohort:
                         mu[y,self.h[y-1,h,z,a],:,self.a[y-1,h,z,a]] += mu[y-1,h,z,a]*pi[z]
 
 
+
+
+
+
 """The following are procedures to get steady state of the economy using direct
 age-profile iteration and projection method"""
-
 
 def fss(params, N=20):
     """Find Old and New Steady States with population growth rates ng and ng1"""
@@ -486,7 +524,7 @@ def fss(params, N=20):
     k = state(params)
     for n in range(N):
         c.optimalpolicy(k.prices)
-        k.aggregate([c.vmu])
+        k.aggregate([c.vmu],[c.vc])
         k.print_prices(n=n+1)
         k.update_prices(n=n+1)
         if k.converged():
@@ -501,34 +539,39 @@ def fss(params, N=20):
 
 
 # separate the procedure of finding optimal policy of each cohort for Parallel Process
-def transition_sub1(t,mu,prices,mu_t,params):
+def sub1(t,vmu,vc,prices,c1,params):
     c = cohort(params)
-    T = params.T
-    yN = params.yN
-    if t < T-1:
-        c.optimalpolicy(prices.T[max(t-yN+1,0):t+1].T)
+    if t < params.T-1:
+        c.optimalpolicy(prices[:,max(t-c.yN+1,0):t+1])
+        # c.optimalpolicy(prices.T[max(t-yN+1,0):t+1].T)
     else:
-        c.vmu = mu_t
+        c.vmu, c.vc = c1.vmu, c1.vc
     for i in range(c.yN*c.hN*c.zN*c.aN):
-        mu[i] = c.vmu[i]
+        vmu[i] = c.vmu[i]
+        vc[i] = c.vc[i]
 
 
 def tran(params, k0, c0, k1, c1, N=5):
     params.print_params()
     T = params.T
     kt = state(params, r_init=k0.r, r_term=k1.r, q_init=k0.q, q_term=k1.q,
-                            Bq_init=k0.Bq, Bq_term=k1.Bq)
-    mu_len = params.yN*params.hN*params.zN*params.aN
+                                                    Bq_init=k0.Bq, Bq_term=k1.Bq)
+    vl = params.yN*params.hN*params.zN*params.aN
     """Generate mu of T cohorts who die in t = 0,...,T-1 with initial asset g0.apath[-t-1]"""
-    mt = [RawArray(c_double, mu_len) for t in range(T)]
+    VM = [RawArray(c_double, vl) for t in range(T)]
+    VC = [RawArray(c_double, vl) for t in range(T)]
     for n in range(N):
         start_time = datetime.now()
-        print str(n+1)+'th loop started at {} \n ...'.format(start_time)
+        print str(n+1)+'th loop started at {}'.format(start_time)
         jobs = []
-        for t, mu in enumerate(mt):
-            p = Process(target=transition_sub1, args=(t,mu,kt.prices,c1.vmu,params))
+        # for t, vmu in enumerate(VM):
+        for t in range(T):
+            p = Process(target=sub1, args=(t,VM[t],VC[t],kt.prices,c1,params))
+            # p = Process(target=transition_sub1, args=(t,vmu,kt.prices,c1.vmu,params))
             p.start()
             jobs.append(p)
+            # if t % 40 == 0:
+            #     print 'processing another 40 cohorts...'
             if len(jobs) % 8 == 0:
                 for p in jobs:
                     p.join()
@@ -536,37 +579,37 @@ def tran(params, k0, c0, k1, c1, N=5):
         if len(jobs) > 0:
             for p in jobs:
                 p.join()
-        kt.aggregate(mt)
+        kt.aggregate(VM,VC)
         for t in linspace(0,T-1,20).astype(int):
             kt.print_prices(n=n+1,t=t)
         kt.update_prices(n=n+1)
         end_time = datetime.now()
-        print 'this loop took {}\n'.format(end_time - start_time)
+        print 'this loop finished in {}\n'.format(end_time - start_time)
         if kt.converged():
             print 'Transition Path Converged! in', n+1,'iterations.'
             break
         if n >= N-1:
             print 'Transition Path Not Converged! in', n+1,'iterations.'
             break
-    return kt, mt
+    return kt, VM, VC
 
 
 if __name__ == '__main__':
     start_time = datetime.now()
-    par = params(psi=0.5, delta=0.08, aN=20, aL=-10, aH=40,
-            Hs=0.3, hN=2, tol=0.001, phi=0.75, eps=0.075, tcost=0.02, gs=2.0,
+    par = params(psi=0.5, delta=0.08, aN=50, aL=-10, aH=40,
+            Hs=0.3, hN=3, tol=0.01, phi=0.75, eps=0.075, tcost=0.02, gs=2.0,
             alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3,
             savgol_windows=41, savgol_order=1, filter_on=1,
             beta=0.994, sigma=1.5, dti=0.5, ltv=0.7)
 
     par.pg=1.012
-    k0, c0 = fss(par, N=3)
+    k0, c0 = fss(par, N=10)
 
     par.pg=1.0
-    k1, c1 = fss(par, N=3)
+    k1, c1 = fss(par, N=10)
 
-    par.pg, par.pg_change, par.T = 1.012, -0.012, 250
-    kt, mu = tran(par, k0, c0, k1, c1, N=1)
+    par.pg, par.pg_change, par.T = 1.012, -0.012, 200
+    kt, mu, vc = tran(par, k0, c0, k1, c1, N=2)
 
     for t in linspace(0,par.T-1,10).astype(int):
         kt.plot(t=t,yi=10,ny=5)
