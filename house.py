@@ -177,7 +177,7 @@ class state:
     def aggregate(self, vmu, vc):
         """Aggregate Capital, Labor in Efficiency unit and Bequest over all cohorts"""
         T, yN, alpha, delta, zeta = self.T, self.yN, self.alpha, self.delta, self.zeta
-        aa, pop, sp, zN, = self.aa, self.pop, self.sp, self.zN,
+        aa, pop, sp, zN, tau = self.aa, self.pop, self.sp, self.zN, self.tau
         aN, hN, hh = self.aN, self.hN, self.hh
         spr = (1-sp)/sp
         my = lambda x: x if x < T-1 else -1
@@ -204,7 +204,7 @@ class state:
                 self.Debt[t] += debt
         self.r1 = alpha*(self.K1/self.L)**(alpha-1.0)-delta
         self.Prod = self.K1**alpha*self.L**(1.0-alpha)
-        self.DI = self.K1*(1-tau)*r + Bq*pop + w*self.L*(1-tau)
+        self.DI = self.K1*(1-tau)*self.r + self.Bq1*sum(pop,axis=1) + self.w*self.L*(1-tau)
 
 
     def update_prices(self, n=0):
