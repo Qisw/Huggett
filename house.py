@@ -257,8 +257,8 @@ class state:
             ax4.plot(self.q,label='smoothed')
             ax4.plot(q0,label='updated')
             ax4.plot(0,self.q_init,'o',label='initial')
-            ax5.plot(self.Prod/self.pop,label='per capita Production')
-            ax5.plot(self.Cons/self.pop,label='per capita Consumption')
+            ax5.plot(self.Prod/sum(self.pop,axis=1),label='per capita Production')
+            ax5.plot(self.Cons/sum(self.pop,axis=1),label='per capita Consumption')
             ax6.plot((self.DI-self.Cons)/self.DI)
             ax2.legend(prop={'size':7})
             ax3.legend(prop={'size':7})
@@ -266,9 +266,11 @@ class state:
             ax5.legend(prop={'size':7})
             # ax6.legend(prop={'size':7})
             ax1.axis([0, self.T, 20, 120])
-            ax2.axis([0, self.T, 8, 20])
+            ax2.axis([0, self.T, 8, 25])
             ax3.axis([0, self.T, rmin, rmax])
             ax4.axis([0, self.T, qmin, qmax])
+            ax5.axis([0, self.T, 0, 0.6])
+            ax6.axis([0, self.T, 0, 0.2])
             ax.set_title('Transition over %i periods'%(self.T), y=1.08)
             ax1.set_title('Liquid Asset')
             ax2.set_title('House Demand')
@@ -596,8 +598,8 @@ def tran(params, k0, c0, k1, c1, N=5):
 
 if __name__ == '__main__':
     start_time = datetime.now()
-    par = params(psi=0.5, delta=0.08, aN=20, aL=-10, aH=50,
-            Hs=0.3, hN=2, tol=0.05, phi=0.75, eps=0.075, tcost=0.02, gs=2.0,
+    par = params(psi=0.5, delta=0.08, aN=50, aL=-10, aH=50,
+            Hs=0.3, hN=5, tol=0.005, phi=0.75, eps=0.075, tcost=0.02, gs=2.0,
             alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3,
             savgol_windows=41, savgol_order=1, filter_on=1,
             beta=0.994, sigma=1.5, dti=0.5, ltv=0.7)
@@ -608,8 +610,8 @@ if __name__ == '__main__':
     par.pg=1.0
     k1, c1 = fss(par, N=10)
 
-    par.pg, par.pg_change, par.T = 1.012, -0.012, 200
-    kt, mu, vc = tran(par, k0, c0, k1, c1, N=2)
+    par.pg, par.pg_change, par.T = 1.012, -0.012, 220
+    kt, mu, vc = tran(par, k0, c0, k1, c1, N=10)
 
     for t in linspace(0,par.T-1,10).astype(int):
         kt.plot(t=t,yi=10,ny=5)
