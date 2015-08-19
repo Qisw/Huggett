@@ -238,8 +238,8 @@ class state:
             ax2 = fig.add_subplot(232)
             ax3 = fig.add_subplot(234)
             ax4 = fig.add_subplot(235)
-            ax3 = fig.add_subplot(233)
-            ax4 = fig.add_subplot(236)
+            ax5 = fig.add_subplot(233)
+            ax6 = fig.add_subplot(236)
             fig.subplots_adjust(hspace=.5, wspace=.3, left=None, right=None,
                                     top=None, bottom=None)
             ax.spines['top'].set_color('none')
@@ -596,8 +596,8 @@ def tran(params, k0, c0, k1, c1, N=5):
 
 if __name__ == '__main__':
     start_time = datetime.now()
-    par = params(psi=0.5, delta=0.08, aN=50, aL=-10, aH=40,
-            Hs=0.3, hN=3, tol=0.01, phi=0.75, eps=0.075, tcost=0.02, gs=2.0,
+    par = params(psi=0.5, delta=0.08, aN=20, aL=-10, aH=50,
+            Hs=0.3, hN=2, tol=0.05, phi=0.75, eps=0.075, tcost=0.02, gs=2.0,
             alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3,
             savgol_windows=41, savgol_order=1, filter_on=1,
             beta=0.994, sigma=1.5, dti=0.5, ltv=0.7)
