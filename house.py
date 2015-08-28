@@ -31,7 +31,7 @@ class params:
         alpha=0.36, delta=0.08, tau=0.2378, theta=0.1, zeta=0.3,
         beta=0.994, sigma=1.5, W=45, R=34, a0=0,
         aH=50.0, aL=0.0, aN=200, hN=5, hL=0.1, hH=1.0,
-        psi=0.1, phi=0.5, dti=0.5, ltv=0.7,
+        psi=0.1, phi=0.5, dti=0.5, ltv=0.7, sp_multiplier=0.1,
         savgol_windows=71, savgol_order=1, filter_on=1, lowess_frac=0.05,
         tcost=0.02, Hs=7, tol=1e-2, eps=0.2, neg=-1e10, gs=1.5):
         self.savgol_windows, self.savgol_order = savgol_windows, savgol_order
@@ -56,15 +56,16 @@ class params:
         """ LOAD PARAMETERS : SURVIVAL PROB., INITIAL DIST. OF PRODUCTIVITY,
         PRODUCTIVITY TRANSITION PROB. AND PRODUCTIVITY """
         if system() == 'Windows':
-            self.sp = sp = loadtxt('parameters\sp.txt', delimiter='\n')
+            self.sp0 = loadtxt('parameters\sp.txt', delimiter='\n')
             self.muz = genfromtxt('parameters\muz.csv', delimiter=',')
             self.pi = genfromtxt('parameters\pi.csv', delimiter=',')
             self.ef = genfromtxt('parameters\ef.csv', delimiter=',')
         else:
-            self.sp = sp = loadtxt('parameters/sp.txt', delimiter='\n')
+            self.sp0 = loadtxt('parameters/sp.txt', delimiter='\n')
             self.muz = genfromtxt('parameters/muz.csv', delimiter=',')
             self.pi = genfromtxt('parameters/pi.csv', delimiter=',')
             self.ef = genfromtxt('parameters/ef.csv', delimiter=',')
+        self.sp1 = self.sp0 + sp_multiplier*(1-self.sp0)
         self.zN = self.pi.shape[0]
         self.yN = self.ef.shape[0]
         self.T = T
@@ -73,21 +74,28 @@ class params:
     def print_params(self):
         print '\n===================== Parameters ====================='
         if self.T==1:
-            print 'Finding Steady State witn tol. %2.3f... \n'%(self.tol)
+            print 'Finding Steady State witn tol. %2.2f%%... \n'%(self.tol*100)
+            print 'Birth Rate is %2.2f%%'%((sum(self.pg)-1)*100),\
+                    'and survival prob. is %2.2f%%'%(prod(self.sp1)*100)
         else:
             print 'Finding Transition Path over %i periods ... \n'%(self.T)
+            if self.pg_change != 0:
+                print 'Birth Rate Changes from %2.2f%%'%((sum(self.pg)-1)*100),\
+                        'to %2.2f%%'%((sum(self.pg+self.pg_change)-1)*100)
+            if prod(self.sp0) != prod(self.sp1):
+                print 'survival prob. rises from %2.2f%%'%(prod(self.sp0)*100),\
+                        'to %2.2f%%'%(prod(self.sp1)*100)
         print 'Liquid Asset: From %i'%(self.aL),'to %i'%(self.aH),\
                 ' with Grid Size %i'%(self.aN)
         print '       House: From %2.2f'%(self.hh[0]),'to %2.2f'%(self.hh[-1]),\
                 ' with Grid Size %i'%(self.hN)
         print 'House Supply per Capita: %2.2f'%(self.Hs)
-        print 'Population Growth Rate Changes from %2.2f'%(sum(self.pg)),\
-                'to %2.2f'%(sum(self.pg+self.pg_change))
         print '\n','psi  :%2.2f'%(self.psi), ' eps  :%2.2f'%(self.eps)\
-                , ' phi:%2.2f'%(self.phi), ' tcost:%2.2f'%(self.tcost), '\n'\
-                , 'delta:%2.2f'%(self.delta), ' alpha:%2.2f'%(self.alpha)\
-                , ' dti:%2.2f'%(self.dti), ' ltv:%2.2f'%(self.ltv)\
-                , ' beta :%2.2f'%(self.beta)
+                , ' phi:%2.2f'%(self.phi), ' htc:%2.0f%%'%(self.tcost*100)\
+                , ' sp:%2.2f%%'%(prod(self.sp1)*100), '\n'\
+                , 'delta:%2.0f%%'%(self.delta*100), ' alpha:%2.2f'%(self.alpha)\
+                , ' dti:%2.0f%%'%(self.dti*100), ' ltv:%2.0f%%'%(self.ltv*100)\
+                , ' beta:%2.2f'%(self.beta)
         print '====================================================== \n'
 
 
@@ -115,8 +123,7 @@ class state:
         self.aa = aa = params.aa
         self.hh = hh = params.hh
         self.hN = hN = params.hN
-        """ SURVIVAL PROB., PRODUCTIVITY TRANSITION PROB. AND ... """
-        self.sp = sp = params.sp
+        """ PRODUCTIVITY TRANSITION PROB. AND ... """
         self.pi = pi = params.pi
         # muz[y] : distribution of productivity of y-yrs agents
         self.muz = muz = params.muz
@@ -128,18 +135,29 @@ class state:
         self.savgol_windows, self.savgol_order = params.savgol_windows, params.savgol_order
         self.lowess_frac = params.lowess_frac
         self.filter_on = params.filter_on
-        """ CALCULATE POPULATIONS OVER THE TRANSITION PATH """
+        self.sp0 = params.sp0
+        self.sp1 = params.sp1
         if T==1:
             ng_term, r_term, q_term, Bq_term = ng_init, r_init, q_init, Bq_init
         self.r_init = r_init
         self.q_init = q_init
         self.r_term = r_term
         self.q_term = q_term
-        m0 = array([prod(sp[:y+1])/ng_init**y for y in range(self.yN)], dtype=float)
-        m1 = array([prod(sp[:y+1])/ng_term**y for y in range(self.yN)], dtype=float)
+        """ CALCULATE POPULATIONS OVER THE TRANSITION PATH
+        In period 0, survival probability and birth rate change are announced
+        from ng_init and sp0 to ng_term and sp1 so that
+        p(p(1,0)  """
+        m0 = array([prod(self.sp0[:y+1])/ng_init**y for y in range(self.yN)], dtype=float)
+        m1 = array([prod(self.sp1[:y+1])/ng_term**y for y in range(self.yN)], dtype=float)
         self.pop = array([m1*ng_term**t for t in range(T)], dtype=float)
+        pm = m0[1:]
+        sp = self.sp1[1:]
         for t in range(min(T,self.yN-1)):
-            self.pop[t,t+1:] = m0[t+1:]*ng_init**t
+            self.pop[t,t+1:] = pm
+            sp = sp[1:]
+            pm = pm[:-1]*sp
+            # If sp_multiplier = 0, the following line works the same way
+            # self.pop[t,t+1:] = m0[t+1:]*ng_init**t
         """Construct containers for market prices, tax rates, pension, bequest"""
         self.Hs = [params.Hs*sum(self.pop[t]) for t in range(T)]
         self.theta = params.theta*ones(T)
@@ -177,9 +195,9 @@ class state:
     def aggregate(self, vmu, vc):
         """Aggregate Capital, Labor in Efficiency unit and Bequest over all cohorts"""
         T, yN, alpha, delta, zeta = self.T, self.yN, self.alpha, self.delta, self.zeta
-        aa, pop, sp, zN, tau = self.aa, self.pop, self.sp, self.zN, self.tau
+        aa, pop, sp1, zN, tau = self.aa, self.pop, self.sp1, self.zN, self.tau
         aN, hN, hh = self.aN, self.hN, self.hh
-        spr = (1-sp)/sp
+        spr = (1-sp1)/sp1
         my = lambda x: x if x < T-1 else -1
         self.mu = [array(vmu[t]).reshape(yN,hN,zN,aN) for t in range(len(vmu))]
         self.c = [array(vc[t]).reshape(yN,hN,zN,aN) for t in range(len(vc))]
@@ -248,9 +266,9 @@ class state:
             ax.spines['right'].set_color('none')
             ax.tick_params(labelcolor='w', top='off', bottom='off', left='off',
                             right='off')
-            ax1.plot(self.K1)
-            ax2.plot(self.Hd,label='Demand')
-            ax2.plot(self.Hs,label='Supply')
+            ax1.plot(self.K1/sum(self.pop,axis=1))
+            ax2.plot(self.Hd/sum(self.pop,axis=1),label='Demand')
+            ax2.plot(self.Hs/sum(self.pop,axis=1),label='Supply')
             ax3.plot(self.r,label='smoothed')
             ax3.plot(r0,label='updated')
             ax3.plot(0,self.r_init,'o',label='initial')
@@ -265,15 +283,15 @@ class state:
             ax4.legend(prop={'size':7})
             ax5.legend(prop={'size':7})
             # ax6.legend(prop={'size':7})
-            ax1.axis([0, self.T, 20, 120])
-            ax2.axis([0, self.T, 8, 25])
+            ax1.axis([0, self.T, 0, 2])
+            ax2.axis([0, self.T, 0, 1])
             ax3.axis([0, self.T, rmin, rmax])
             ax4.axis([0, self.T, qmin, qmax])
             ax5.axis([0, self.T, 0, 1.0])
             ax6.axis([0, self.T, 0.0, 0.4])
             ax.set_title('Transition over %i periods'%(self.T), y=1.08)
-            ax1.set_title('Liquid Asset')
-            ax2.set_title('House Demand')
+            ax1.set_title('per capita Liquid Asset')
+            ax2.set_title('per capita House Demand')
             ax3.set_title('Interest Rate')
             ax4.set_title('House Price')
             ax5.set_title('Production and Consumption')
@@ -427,7 +445,7 @@ class cohort:
         self.tcost = params.tcost
         self.ltv = params.ltv
         """ SURVIVAL PROB., PRODUCTIVITY TRANSITION PROB. AND ... """
-        self.sp = sp = params.sp
+        self.sp1 = sp1 = params.sp1
         self.pi = pi = params.pi
         # muz[y] : distribution of productivity of y-yrs agents
         self.muz = muz = params.muz
@@ -460,7 +478,7 @@ class cohort:
         r, w, q, b, Bq, theta, tau = prices
         ef, yN, R, aN, zN, hN = self.ef, self.yN, self.R, self.aN, self.zN, self.hN
         sigma, psi, beta = self.sigma, self.psi, self.beta
-        sp, pi, tcost, ltv, neg = self.sp, self.pi, self.tcost, self.ltv, self.neg
+        sp1, pi, tcost, ltv, neg = self.sp1, self.pi, self.tcost, self.ltv, self.neg
         """ev[y,nh,j,ni] is the expected value when next period asset ni and house hi"""
         ev = zeros((yN,hN,zN,aN))
         """ct is a channel to store optimal consumption in vc"""
@@ -488,7 +506,7 @@ class cohort:
                                 + hinc(hh[h],hh[nh],q[y])
                         c = p[:,newaxis] - aa
                         c[c<=0.0] = 1e-10
-                        vt[nh] = util(c,hh[h]) + beta*sp[y+1]*ev[y+1,nh,z] \
+                        vt[nh] = util(c,hh[h]) + beta*sp1[y+1]*ev[y+1,nh,z] \
                                     + neg*(-ltv*hh[nh]*q[y]>aa)
                     for a in range(aN):
                         """find optimal pairs of house and asset """
@@ -598,20 +616,25 @@ def tran(params, k0, c0, k1, c1, N=5):
 
 if __name__ == '__main__':
     start_time = datetime.now()
-    par = params(psi=0.5, delta=0.08, aN=70, aL=-10, aH=50,
-            Hs=0.3, hN=7, tol=0.002, phi=0.75, eps=0.075, tcost=0.02, gs=2.0,
-            alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3,
+    par = params(T=1, psi=0.5, delta=0.08, aN=60, aL=-10, aH=50,
+            Hs=0.3, hN=5, tol=0.001, phi=0.75, eps=0.075, tcost=0.02, gs=2.0,
+            alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3, sp_multiplier=0.1,
             savgol_windows=41, savgol_order=1, filter_on=1,
             beta=0.994, sigma=1.5, dti=0.5, ltv=0.7)
 
-    par.pg=1.012
+    sp0, sp1 = par.sp0, par.sp1
+
+    par.pg = 1.000
+    par.sp1 = sp0
     k0, c0 = fss(par, N=30)
 
-    par.pg=1.0
+    par.sp0 = par.sp1 = sp1
     k1, c1 = fss(par, N=30)
 
-    par.pg, par.pg_change, par.T = 1.012, -0.012, 220
-    kt, mu, vc = tran(par, k0, c0, k1, c1, N=10)
+    par.pg, par.pg_change = 1.000, 1.000-1.000
+    par.sp0, par.sp1 = sp0, sp1
+    par.T = 300
+    kt, mu, vc = tran(par, k0, c0, k1, c1, N=15)
 
     for t in linspace(0,par.T-1,10).astype(int):
         kt.plot(t=t,yi=10,ny=5)
