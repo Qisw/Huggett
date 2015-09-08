@@ -5,11 +5,13 @@ Huggett (1996) "Wealth distribution in life-cycle economies," Journal of Monetar
 Economics, 38(3), 469-494.
 """
 
-from scipy.interpolate import interp1d
+from scipy.interpolate import interp1d, InterpolatedUnivariateSpline
 from scipy.optimize import fsolve, minimize_scalar, broyden1, broyden2
 from scipy.fftpack import rfft, rfftfreq, irfft
 from scipy.signal import savgol_filter
+from scipy.stats import norm
 import statsmodels.api as sm
+from math import sqrt, exp
 from numpy import linspace, mean, array, zeros, absolute, loadtxt, dot, prod, int,\
                     genfromtxt, sum, argmax, tile, concatenate, ones, log, \
                     unravel_index, cumsum, meshgrid, atleast_2d, where, newaxis,\
@@ -30,7 +32,8 @@ class params:
     def __init__(self, T=1, pg=1.012, pg_change=0.0,
         alpha=0.36, delta=0.08, tau=0.2378, theta=0.1, zeta=0.3,
         beta=0.994, sigma=1.5, W=45, R=34, a0=0,
-        aH=50.0, aL=0.0, aN=200, hN=5, hL=0.1, hH=1.0,
+        zN = 18, yN = 79, SIGMAe = sqrt(0.045), GAMMA = 0.96,
+        aH=60.0, aL=-10.0, aN=200, hN=5, hL=0.1, hH=1.0,
         psi=0.1, phi=0.5, dti=0.5, ltv=0.7, sp_multiplier=0.1,
         savgol_windows=71, savgol_order=1, filter_on=1, lowess_frac=0.05,
         tcost=0.02, Hs=7, tol=1e-2, eps=0.2, neg=-1e10, gs=1.5):
@@ -43,9 +46,11 @@ class params:
         self.beta, self.sigma = beta, sigma
         self.R, self.W = R, W
         self.aH, self.aL = aH, aL
-        am = [-aH*linspace(0,1,aN)**gs][0][int(-aN*aL/aH):0:-1]
+        # am = [-aH*linspace(0,1,aN)**gs][0][int(-aN*aL/aH):0:-1]
         ap = aH*linspace(0,1,aN)**gs
-        self.aa = concatenate((am,ap))
+        am = -ap[::-1]
+        aa = concatenate((am,ap))
+        self.aa = aa[aa > aL]
         self.aN = len(self.aa)
         # self.aa = aL+aH*linspace(0,1,aN)
         self.phi, self.tol, self.neg, self.eps = phi, tol, neg, eps
@@ -55,20 +60,57 @@ class params:
         self.Hs = Hs
         """ LOAD PARAMETERS : SURVIVAL PROB., INITIAL DIST. OF PRODUCTIVITY,
         PRODUCTIVITY TRANSITION PROB. AND PRODUCTIVITY """
-        if system() == 'Windows':
-            self.sp0 = loadtxt('parameters\sp.txt', delimiter='\n')
-            self.muz = genfromtxt('parameters\muz.csv', delimiter=',')
-            self.pi = genfromtxt('parameters\pi.csv', delimiter=',')
-            self.ef = genfromtxt('parameters\ef.csv', delimiter=',')
-        else:
-            self.sp0 = loadtxt('parameters/sp.txt', delimiter='\n')
-            self.muz = genfromtxt('parameters/muz.csv', delimiter=',')
-            self.pi = genfromtxt('parameters/pi.csv', delimiter=',')
-            self.ef = genfromtxt('parameters/ef.csv', delimiter=',')
+        self.sp0 = array([1.00000, 0.99962, 0.99960, 0.99958, 0.99956, \
+                          0.99954, 0.99952, 0.99950, 0.99947, 0.99945, \
+                          0.99942, 0.99940, 0.99938, 0.99934, 0.99930, \
+                          0.99925, 0.99919, 0.99910, 0.99899, 0.99887, \
+                          0.99875, 0.99862, 0.99848, 0.99833, 0.99816, \
+                          0.99797, 0.99775, 0.99753, 0.99731, 0.99708, \
+                          0.99685, 0.99659, 0.99630, 0.99599, 0.99566, \
+                          0.99529, 0.99492, 0.99454, 0.99418, 0.99381, \
+                          0.99340, 0.99291, 0.99229, 0.99150, 0.99057, \
+                          0.98952, 0.98841, 0.98719, 0.98582, 0.98422, \
+                          0.98241, 0.98051, 0.97852, 0.97639, 0.97392, \
+                          0.97086, 0.96714, 0.96279, 0.95795, 0.95241, \
+                          0.94646, 0.94005, 0.93274, 0.92434, 0.91518, \
+                          0.90571, 0.89558, 0.88484, 0.87352, 0.86166, \
+                          0.84930, 0.83652, 0.82338, 0.80997, 0.79638, \
+                          0.78271, 0.76907, 0.75559, 0.74239])
         self.sp1 = self.sp0 + sp_multiplier*(1-self.sp0)
-        self.zN = self.pi.shape[0]
-        self.yN = self.ef.shape[0]
-        self.T = T
+        self.T, self.zN, self.yN = T, zN, yN
+        SIGMAy = sqrt(SIGMAe**2/(1-GAMMA**2))
+        age = array([0, 15, 35, 50])
+        eff = array([0.11931, 0.41017, 0.47964, 0.23370])
+        eff = InterpolatedUnivariateSpline(age, eff, k=1)(range(yN))
+        age = array([2.5, 10, 20, 30, 40, 50])
+        ls = array([0.796, 0.919, 0.919, 0.875, 0.687, 0.19])
+        ls = InterpolatedUnivariateSpline(age, ls, k=1)(range(yN))
+        ybar = log(maximum(eff,0) * maximum(ls,0))
+        zgrid = linspace(-4*SIGMAy, 4.5*SIGMAy, zN)
+        zgrid[-1] = 6*SIGMAy
+        zrange = (zgrid[1:] + zgrid[:-1])/2.0
+        zrange = concatenate(([-float("inf")],zrange,[float("inf")]))
+        """labor supply in efficiency unit by age and productivity"""
+        self.ef = zeros((yN,zN))
+        for y in range(yN):
+            for z in range(zN):
+                self.ef[y,z] = exp(ybar[y] + zgrid[z])
+        """transition probability of productivity"""
+        self.pi = zeros((zN, zN))
+        for i in range(zN):
+            for j in range(zN):
+                self.pi[i,j] = norm.cdf((zrange[j+1] - GAMMA*zgrid[i])/SIGMAe,0,1) \
+                                - norm.cdf((zrange[j] - GAMMA*zgrid[i])/SIGMAe,0,1)
+        """distribution of productivity within each age"""
+        self.muz = zeros((yN,zN))
+        for j in range(zN):
+            self.muz[0,j] = norm.cdf(zrange[j+1],0,SIGMAy) - norm.cdf(zrange[j],0,SIGMAy)
+        for y in range(1,yN):
+            self.muz[y] = self.muz[y-1].dot(self.pi)
+        # self.sp0 = loadtxt('parameters\sp.txt', delimiter='\n')
+        # self.muz = genfromtxt('parameters\muz.csv', delimiter=',')
+        # self.pi = genfromtxt('parameters\pi.csv', delimiter=',')
+        # self.ef = genfromtxt('parameters\ef.csv', delimiter=',')
 
 
     def print_params(self):
@@ -85,17 +127,17 @@ class params:
             if prod(self.sp0) != prod(self.sp1):
                 print 'survival prob. rises from %2.2f%%'%(prod(self.sp0)*100),\
                         'to %2.2f%%'%(prod(self.sp1)*100)
-        print 'Liquid Asset: From %i'%(self.aa[0]),'to %i'%(self.aa[-1]),\
+        print 'Liquid Asset: From %2.1f'%(self.aa[0]),'to %2.1f'%(self.aa[-1]),\
                 ' with Grid Size %i'%(self.aN)
-        print '       House: From %2.2f'%(self.hh[0]),'to %2.2f'%(self.hh[-1]),\
+        print '       House: From %2.1f'%(self.hh[0]),'to %2.1f'%(self.hh[-1]),\
                 ' with Grid Size %i'%(self.hN)
         print 'House Supply per Capita: %2.2f'%(self.Hs)
-        print '\n','psi  :%2.2f'%(self.psi), ' eps  :%2.2f'%(self.eps)\
-                , ' phi:%2.2f'%(self.phi), ' htc:%2.0f%%'%(self.tcost*100)\
-                , ' sp:%2.2f%%'%(prod(self.sp1)*100), '\n'\
-                , 'delta:%2.0f%%'%(self.delta*100), ' alpha:%2.2f'%(self.alpha)\
-                , ' dti:%2.0f%%'%(self.dti*100), ' ltv:%2.0f%%'%(self.ltv*100)\
-                , ' beta:%2.2f'%(self.beta)
+        print '\n','psi:%2.2f'%(self.psi), ' eps:%2.2f'%(self.eps)\
+                , ' phi:%2.3f'%(self.phi), ' htc:%2.2f%%'%(self.tcost*100)\
+                , ' sp :%2.2f%%'%(prod(self.sp1)*100), '\n'\
+                , 'del:%2.1f%%'%(self.delta*100), ' alp:%2.2f'%(self.alpha)\
+                , ' dti:%2.1f%%'%(self.dti*100), ' ltv:%2.1f%%'%(self.ltv*100)\
+                , ' bet:%2.3f'%(self.beta)
         print '====================================================== \n'
 
 
@@ -384,14 +426,24 @@ class state:
             ax3.plot(aa,sum(mu[y],(0,1)),label='age %i'%(y))
         for y in linspace(yi,yt,ny).astype(int):
             ax4.plot(hh,sum(mu[y],(1,2)),label='age %i'%(y))
-        ax5.plot(cumsum(al)/sum(al),cumsum(aa*al)/sum(aa*al),".")
+        lx = cumsum(al)/sum(al)
+        ly = cumsum(aa*al)/sum(aa*al)
+        gini0 = sum([(ly[i]+ly[i-1])*(lx[i]-lx[i-1])/2.0 for i in range(1,len(lx))])
+        gini_l = (0.5-gini0)/0.5
+        ax5.plot(lx,ly,".",label='Gini coef.=%1.2f'%(gini_l))
         # ax6.plot(cumsum(hl)/sum(hl),cumsum(hh*hl)/sum(hh*hl),".")
-        ax6.plot(cumsum(ah)/sum(ah),cumsum(ah*w)/sum(ah*w),".")
+        lx = cumsum(ah)/sum(ah)
+        ly = cumsum(ah*w)/sum(ah*w)
+        gini0 = sum([(ly[i]+ly[i-1])*(lx[i]-lx[i-1])/2.0 for i in range(1,len(lx))])
+        gini_t = (0.5-gini0)/0.5
+        ax6.plot(lx,ly,".",label='Gini coef.=%1.2f'%(gini_t))
         # ax1.legend(bbox_to_anchor=(0.9,1.0),loc='center',prop={'size':8})
         ax1.legend(prop={'size':7}, loc=2)
         ax2.legend(prop={'size':7}, loc=2)
         ax3.legend(prop={'size':7})
         ax4.legend(prop={'size':7})
+        ax5.legend(prop={'size':7}, loc=2)
+        ax6.legend(prop={'size':7}, loc=2)
         # ax3.axis([0, 15, 0, 0.1])
         ax5.axis([0, 1, 0, 1])
         ax6.axis([0, 1, 0, 1])
@@ -616,7 +668,7 @@ def tran(params, k0, c0, k1, c1, N=5):
 
 if __name__ == '__main__':
     start_time = datetime.now()
-    par = params(T=1, psi=0.5, delta=0.08, aN=50, aL=-30, aH=50,
+    par = params(T=1, psi=0.5, delta=0.08, aN=60, aL=-15, aH=60,
             Hs=0.3, hN=5, tol=0.001, phi=0.75, eps=0.075, tcost=0.02, gs=2.0,
             alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3, sp_multiplier=0.1,
             savgol_windows=41, savgol_order=1, filter_on=1,
