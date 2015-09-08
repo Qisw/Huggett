@@ -43,7 +43,7 @@ class params:
         self.beta, self.sigma = beta, sigma
         self.R, self.W = R, W
         self.aH, self.aL = aH, aL
-        am = [-aH*linspace(0,1,aN)**gs][0][int(-aN*aL/(aH-aL)):0:-1]
+        am = [-aH*linspace(0,1,aN)**gs][0][int(-aN*aL/aH):0:-1]
         ap = aH*linspace(0,1,aN)**gs
         self.aa = concatenate((am,ap))
         self.aN = len(self.aa)
@@ -85,7 +85,7 @@ class params:
             if prod(self.sp0) != prod(self.sp1):
                 print 'survival prob. rises from %2.2f%%'%(prod(self.sp0)*100),\
                         'to %2.2f%%'%(prod(self.sp1)*100)
-        print 'Liquid Asset: From %i'%(self.aL),'to %i'%(self.aH),\
+        print 'Liquid Asset: From %i'%(self.aa[0]),'to %i'%(self.aa[-1]),\
                 ' with Grid Size %i'%(self.aN)
         print '       House: From %2.2f'%(self.hh[0]),'to %2.2f'%(self.hh[-1]),\
                 ' with Grid Size %i'%(self.hN)
@@ -235,10 +235,10 @@ class state:
         self.b = self.theta*self.w*self.L/self.pr
         self.Bq = self.phi*self.Bq + (1-self.phi)*self.Bq1
         self.q = self.q*(1+self.eps*(self.Hd-self.Hs))
-        rmin = min(self.r_init,self.r_term)-0.04
-        rmax = max(self.r_init,self.r_term)+0.04
-        qmin = min(self.q_init,self.q_term)-4
-        qmax = max(self.q_init,self.q_term)+4
+        rmin = min(self.r_init,self.r_term) - 0.015
+        rmax = max(self.r_init,self.r_term) + 0.015
+        qmin = min(self.q_init,self.q_term) - 1.5
+        qmax = max(self.q_init,self.q_term) + 1.5
         if self.T > 1:
             r0 = self.r
             q0 = self.q
@@ -283,12 +283,12 @@ class state:
             ax4.legend(prop={'size':7})
             ax5.legend(prop={'size':7})
             # ax6.legend(prop={'size':7})
-            ax1.axis([0, self.T, 0, 2])
-            ax2.axis([0, self.T, 0, 1])
+            ax1.axis([0, self.T, 1, 1.5])
+            ax2.axis([0, self.T, 0.2, 0.4])
             ax3.axis([0, self.T, rmin, rmax])
             ax4.axis([0, self.T, qmin, qmax])
-            ax5.axis([0, self.T, 0, 1.0])
-            ax6.axis([0, self.T, 0.0, 0.4])
+            ax5.axis([0, self.T, 0.2, 0.7])
+            ax6.axis([0, self.T, 0.1, 0.3])
             ax.set_title('Transition over %i periods'%(self.T), y=1.08)
             ax1.set_title('per capita Liquid Asset')
             ax2.set_title('per capita House Demand')
@@ -388,8 +388,8 @@ class state:
         # ax6.plot(cumsum(hl)/sum(hl),cumsum(hh*hl)/sum(hh*hl),".")
         ax6.plot(cumsum(ah)/sum(ah),cumsum(ah*w)/sum(ah*w),".")
         # ax1.legend(bbox_to_anchor=(0.9,1.0),loc='center',prop={'size':8})
-        ax1.legend(prop={'size':7})
-        ax2.legend(prop={'size':7})
+        ax1.legend(prop={'size':7}, loc=2)
+        ax2.legend(prop={'size':7}, loc=2)
         ax3.legend(prop={'size':7})
         ax4.legend(prop={'size':7})
         # ax3.axis([0, 15, 0, 0.1])
@@ -616,7 +616,7 @@ def tran(params, k0, c0, k1, c1, N=5):
 
 if __name__ == '__main__':
     start_time = datetime.now()
-    par = params(T=1, psi=0.5, delta=0.08, aN=60, aL=-10, aH=50,
+    par = params(T=1, psi=0.5, delta=0.08, aN=50, aL=-30, aH=50,
             Hs=0.3, hN=5, tol=0.001, phi=0.75, eps=0.075, tcost=0.02, gs=2.0,
             alpha=0.36, tau=0.2378, theta=0.1, zeta=0.3, sp_multiplier=0.1,
             savgol_windows=41, savgol_order=1, filter_on=1,
@@ -624,17 +624,18 @@ if __name__ == '__main__':
 
     sp0, sp1 = par.sp0, par.sp1
 
-    par.pg = 1.000
+    par.pg = 1.012
     par.sp1 = sp0
     k0, c0 = fss(par, N=30)
 
+    par.pg = 1.000
     par.sp0 = par.sp1 = sp1
     k1, c1 = fss(par, N=30)
 
-    par.pg, par.pg_change = 1.000, 1.000-1.000
+    par.pg, par.pg_change = 1.012, 1.000-1.012
     par.sp0, par.sp1 = sp0, sp1
-    par.T = 300
-    kt, mu, vc = tran(par, k0, c0, k1, c1, N=15)
+    par.T = 240
+    kt, mu, vc = tran(par, k0, c0, k1, c1, N=20)
 
     for t in linspace(0,par.T-1,10).astype(int):
         kt.plot(t=t,yi=10,ny=5)
